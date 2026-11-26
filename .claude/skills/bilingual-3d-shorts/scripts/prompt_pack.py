@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 
-from common import CLIP_EXTS, IMG_EXTS, find_file, iter_shots, load_beats, load_config, project_dir
+from common import CLIP_EXTS, CODE_SOURCES, IMG_EXTS, find_file, iter_shots, load_beats, load_config, project_dir
 
 CAMERA = {
     "push_in": "slow steady camera push-in toward the subject",
@@ -32,7 +32,7 @@ def main():
     load_config()
     pdir = project_dir(a.slug)
     beats = load_beats(pdir)
-    heroes = [(b, s) for b, s in iter_shots(beats) if s.get("hero") and s.get("source") != "code3d"]  # code3d shots already have clips
+    heroes = [(b, s) for b, s in iter_shots(beats) if s.get("hero") and s.get("source") not in CODE_SOURCES]  # code3d / faceless shots already have clips
     L = [f"# Prompt pack - {beats['title']}\n",
          "Generate a **5-second, 9:16** image-to-video clip for each shot below using the free tools in "
          "`references/free-video-tiers.md` (Gemini app / Google Flow Veo, Kling free credits, Meta AI, Hailuo).\n",

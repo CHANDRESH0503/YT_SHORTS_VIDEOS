@@ -18,6 +18,24 @@ CAMERA_MOVES = ("push_in", "pull_out", "pan_left", "pan_right", "tilt_up", "tilt
 ROLES = ("hook", "mechanism", "escalation", "twist", "payoff")
 IMG_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 CLIP_EXTS = (".mp4", ".mov", ".webm")
+SOURCES = ("code3d", "nano", "faceless")  # visual source per shot (references/visual-source-decision.md)
+CODE_SOURCES = ("code3d", "faceless")     # rendered by Claude in code -> clips/Sxx.mp4 + keyframes/Sxx.png
+FACELESS_SKILL = SKILL_DIR.parent / "faceless-shorts"
+
+
+def find_chrome() -> str | None:
+    """Chrome for the faceless-shorts engine: $CHROME, an installed Chrome/Chromium, else Remotion's Chrome for Testing."""
+    cands = [os.environ.get("CHROME", ""), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+             "/Applications/Chromium.app/Contents/MacOS/Chromium"]
+    cands += sorted(map(str, (REMOTION_DIR / "node_modules/.remotion/chrome-for-testing").glob(
+        "*/*/chrome-*/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")), reverse=True)
+    return next((c for c in cands if c and os.path.exists(c)), None)
+
+
+def faceless_styles() -> list[str]:
+    """Styles of the faceless-shorts skill (each has styles/<style>/example)."""
+    d = FACELESS_SKILL / "styles"
+    return sorted(p.name for p in d.iterdir() if (p / "example").is_dir()) if d.exists() else []
 
 
 def load_config() -> dict:

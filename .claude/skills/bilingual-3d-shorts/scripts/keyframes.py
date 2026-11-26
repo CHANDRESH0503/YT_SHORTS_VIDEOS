@@ -18,7 +18,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from common import IMG_EXTS, die, find_file, iter_shots, load_beats, load_config, project_dir, run
+from common import CODE_SOURCES, IMG_EXTS, die, find_file, iter_shots, load_beats, load_config, project_dir, run
 
 MIN_W = 720  # below this the 1080x1920 render looks soft
 
@@ -65,12 +65,12 @@ def write_pack(pdir: Path, beats: dict, cfg: dict) -> Path:
         for a in beats["assets"]:
             stem = f"asset_{a['id']}"
             L += [f"### `{stem}.png` - {done(stem)}", "```", build_asset_prompt(beats, a, cfg), "```", ""]
-    code = [s["id"] for _, s in iter_shots(beats) if s.get("source") == "code3d"]
+    code = [s["id"] for _, s in iter_shots(beats) if s.get("source") in CODE_SOURCES]
     if code:
-        L.append(f"\n> Built by Claude as code-built 3D - **skip these**: {', '.join(code)}\n")
+        L.append(f"\n> Built by Claude in code (code3d / faceless-shorts) - **skip these**: {', '.join(code)}\n")
     L.append("\n## Step 2 - one frame per shot (vertical 9:16)\n")
     for b, s in iter_shots(beats):
-        if s.get("source") == "code3d":
+        if s.get("source") in CODE_SOURCES:
             continue
         refs = [f"`asset_{r}.png`" for r in s.get("asset_refs", [])]
         tag = " · **hero**" if s.get("hero") else ""
@@ -81,7 +81,7 @@ def write_pack(pdir: Path, beats: dict, cfg: dict) -> Path:
     out.write_text("\n".join(L), encoding="utf-8")
     (kdir / "prompts.json").write_text(json.dumps(
         {**{f"asset_{a['id']}": build_asset_prompt(beats, a, cfg) for a in beats["assets"]},
-         **{s["id"]: build_shot_prompt(beats, s, cfg) for _, s in iter_shots(beats) if s.get("source") != "code3d"}},
+         **{s["id"]: build_shot_prompt(beats, s, cfg) for _, s in iter_shots(beats) if s.get("source") not in CODE_SOURCES}},
         ensure_ascii=False, indent=1))
     return out
 
@@ -160,7 +160,7 @@ def check(pdir: Path, beats: dict, cfg: dict) -> dict:
     for _, s in iter_shots(beats):
         f = find_file(kdir, s["id"], IMG_EXTS)
         if not f:
-            (pending_3d if s.get("source") == "code3d" else missing).append(s["id"])
+            (pending_3d if s.get("source") in CODE_SOURCES else missing).append(s["id"])
             continue
         report[s["id"]] = normalise(f, kdir, W, H)
     for a in beats["assets"]:
@@ -215,11 +215,11 @@ def main():
         if res["missing"]:
             die(f"{len(res['missing'])} Nano Banana frame(s) still missing: {' '.join(res['missing'])}", 2)
         if res["code3d_pending"]:
-            die(f"code3d shots not rendered yet: {' '.join(res['code3d_pending'])} - build and render them first (clips/Sxx.mp4 + keyframes/Sxx.png)", 2)
+            die(f"code-rendered shots not done yet: {' '.join(res['code3d_pending'])} - render them first (code3d scenes, or faceless.py --export) -> clips/Sxx.mp4 + keyframes/Sxx.png", 2)
         return
     pack = write_pack(pdir, beats, cfg)
     shots = [s["id"] for _, s in iter_shots(beats)]
-    nano = [s["id"] for _, s in iter_shots(beats) if s.get("source") != "code3d"]
+    nano = [s["id"] for _, s in iter_shots(beats) if s.get("source") not in CODE_SOURCES]
     missing = [sid for sid in nano if not find_file(pdir / "keyframes", sid, IMG_EXTS)]
     print(json.dumps({"prompt_sheet": str(pack), "folder": str(pdir / "keyframes"), "shots": len(shots), "nano_shots": len(nano),
                       "assets": [f"asset_{x['id']}" for x in beats["assets"]], "missing": missing}, indent=1))

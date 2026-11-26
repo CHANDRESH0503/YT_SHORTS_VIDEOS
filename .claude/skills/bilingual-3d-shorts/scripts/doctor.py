@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import urllib.request
 
-from common import ASSETS_DIR, REMOTION_DIR, ROOT, SKILL_DIR, disk_free_gb, load_env
+from common import ASSETS_DIR, REMOTION_DIR, ROOT, SKILL_DIR, disk_free_gb, faceless_styles, find_chrome, load_env
 
 
 def check(name, ok, detail="", fix=""):
@@ -61,6 +61,15 @@ def main():
             else:
                 all_ok &= check("ElevenLabs API reachable", False, str(e)[:200])
     check("Keyframes", True, "Nano Banana (manual, free) - keyframes.py writes the prompt sheet")
+    # faceless-shorts engine (source: "faceless") - only needed when a project uses it, so it never FAILs the preflight
+    fs_styles = faceless_styles()
+    node_major = int(subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip().lstrip("v").split(".")[0] or 0) if shutil.which("node") else 0
+    chrome = find_chrome()
+    fs_ok = bool(fs_styles) and node_major >= 22 and chrome
+    check("faceless-shorts engine (optional)", True,
+          f"ready - styles: {', '.join(fs_styles)}" if fs_ok else
+          "not usable for source 'faceless': " + ", ".join(x for x, bad in (("skill missing", not fs_styles), (f"node {node_major} < 22", node_major < 22),
+                                                                            ("Google Chrome missing", not chrome)) if bad))
     gi = ROOT / ".gitignore"
     check(".env is git-ignored", gi.exists() and ".env" in gi.read_text(), fix="add '.env' to YT_VIDEOS/.gitignore")
 

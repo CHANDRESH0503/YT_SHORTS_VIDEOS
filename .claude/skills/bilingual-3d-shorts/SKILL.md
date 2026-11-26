@@ -8,7 +8,8 @@ description: Turn a one-line idea into two production-ready 40-55s vertical 3D e
 One line in, two finished 9:16 Shorts out: `final/<slug>_en.mp4` and `final/<slug>_ta.mp4`, plus SRTs, thumbnails and metadata.
 The look follows `YT_VIDEOS/References/`: realistic game-engine 3D, teal/cyan grade, an always-moving camera, 2-3s shots,
 whip/zoom transitions, glowing number/icon overlays, and 2-3 word white captions.
-**Budget is $0.** You make the stills in Nano Banana (Gemini app / AI Studio, free) from a prompt sheet, the ElevenLabs free tier does the voices, hero clips come from free web tools
+**Budget is $0.** Shots come from three visual sources: code-built 3D (Claude), the **faceless-shorts** engines (Claude, in code)
+and Nano Banana (you make the stills in the Gemini app / AI Studio, free, from a prompt sheet), the ElevenLabs free tier does the voices, hero clips come from free web tools
 (added by the user by hand), and Remotion renders.
 
 Paths: `SK=YT_VIDEOS/.claude/skills/bilingual-3d-shorts`, scripts in `$SK/scripts` (run them with `python3`, cwd = scripts),
@@ -19,7 +20,8 @@ projects in `YT_VIDEOS/projects/<slug>/`. Read these when you reach the step tha
 
 ## Invocation
 - `/bilingual-3d-shorts <one-line idea>` starts a new project.
-- `/bilingual-3d-shorts continue <slug>` resumes. Run `python3 project.py status <slug>` and continue from the first incomplete stage.
+- `/bilingual-3d-shorts continue <slug>` resumes. Run `python3 project.py status <slug>` and continue from the first incomplete stage
+  (`faceless_renders_missing` lists faceless shots that still need `faceless.py --export`).
   If every stage is done but `projects/<slug>/retro.md` is missing, run Stage 9.
 - `/bilingual-3d-shorts doctor` runs `python3 doctor.py --tamil`, then view `$SK/qa_tamil_test.png` and check the Tamil shaping.
 
@@ -47,10 +49,14 @@ Write `beats.json` following script-playbook §2, §2b and §4 and style-guide (
 - English narration should be 115-150 words. Write the Tamil narration per beat as a **transcreation** (§3), not a translation.
 - Each shot needs a concrete `scene`, `asset_refs`, a `camera_move` (never the same one twice in a row) and `lighting_camera`.
   Hero shots also need a `motion_prompt`. Add 4-7 `overlay`s with triggers that appear in both languages.
-**Visual source decision (required):** before validating, score every shot against `references/visual-source-decision.md` and decide
-whether code-built 3D can do it efficiently. Set `"source": "code3d" | "nano"` and a one-line `source_reason` on every shot, plus a top-level
-`visual_plan` {mode, reason}. Code-built 3D suits precision, process and geometric subjects. Anything needing a realistic person,
-face, animal, food or landscape is always `nano`. Keep it within the ~90 min build budget. If code3d shots are few (1-2), use nano instead.
+**Visual source decision (required):** before validating, score every shot against `references/visual-source-decision.md` and pick
+one of three sources. Set `"source": "code3d" | "faceless" | "nano"` and a one-line `source_reason` on every shot, plus a top-level
+`visual_plan` {mode: code3d|faceless|nano|hybrid, reason, and `faceless_style` when any shot is faceless}.
+- `code3d`: precision, process and geometric subjects (custom three.js scenes).
+- `faceless`: stylised people, bodies and stories, using a **faceless-shorts** style (`deep-dive`, `night-file`, `inside-out`,
+  `stick-story`, `paper-atlas` or `tall-tale`; one style per video). Read that style's `STYLE.md` before choosing.
+- `nano`: anything that must look photoreal. A realistic (photoreal) person, face, animal, food or landscape is always `nano`.
+Keep code3d + faceless within the ~90 min build budget. If code3d or faceless shots are few (1-2), use nano instead.
 Then run `python3 project.py validate <slug>`. Fix every error and re-run until `ok: true`. Resolve warnings unless there is a reason not to.
 
 ### GATE 1: script approval (stop and wait)
@@ -61,29 +67,45 @@ Show the user:
 - the estimated seconds per language
 - how many characters the voices will use, against the ElevenLabs credits left (`python3 voice.py credits`)
 - 2-3 key sources
-- the **visual plan**: mode, which shots are code-built 3D and which you make in Nano Banana (with counts), and the one-line reason
+- the **visual plan**: mode, which shots are code-built 3D, which are faceless-shorts (and which style), and which you make in Nano Banana (with counts), and the one-line reason
 
 Ask for approval or edits. **Do not spend credits before approval.**
 
-## Stage 3: Keyframes (code-built 3D first, then Nano Banana)
+## Stage 3: Keyframes (code-built 3D and faceless-shorts first, then Nano Banana)
 **3a. Code-built shots** (`source: code3d`): Claude builds these as three.js + Remotion scenes and renders each to
 `clips/Sxx.mp4` (5s) plus `keyframes/Sxx.png`. Reference: `projects/how-a-7-segment-display-works/scenes3d/`.
 
+**3a-2. Faceless-shorts shots** (`source: faceless`), built by Claude with the faceless-shorts skill's engine (skip if there are none):
+1. Read `../faceless-shorts/styles/<faceless_style>/STYLE.md` in full and look at its `style-sheet.png`. Do **not** run the
+   faceless-shorts setup.sh, voice.py, words.py or mix.py: only its visual engine is used (Node 22+ and a Chrome; `doctor.py` shows
+   "faceless-shorts engine ... ready", using Remotion's Chrome for Testing when Chrome isn't installed).
+2. `python3 faceless.py <slug>` copies the style's example engine to `projects/<slug>/faceless/` and gives every faceless shot a silent,
+   caption-free 5 s slot. It prints the slot list (`L(k) = Sxx: scene`) and writes `faceless/slots.json`.
+3. Rewrite `faceless/src/shots.js`: one shot per slot, `add({ id: 'Sxx', at: L(k), draw(lt, d, t, blit) {...} })`, reusing the style's
+   kit (sets, `Human`, x-ray, look2d). Follow the shot's `scene` and `camera_move`, and keep the camera moving. Don't use `Wd()` (no words here),
+   and don't draw captions or text pills over the lower third: Remotion adds captions and overlays.
+4. `python3 faceless.py <slug> --check` (must print CHECK OK). Iterate on single frames with
+   `node tools/capture.mjs frames review/f "<t>"` inside `faceless/`, and look at them.
+5. `python3 faceless.py <slug> --export` renders every faceless shot to `clips/Sxx.mp4` (5 s, 1080x1920, 30 fps) + `keyframes/Sxx.png`.
+   Re-export one shot with `--only S04`. No GPU: put `SOFTWARE_GL=1 QS='&res=0.6&aa=0&shadow=1024'` in front of the command (slow, so tell the user).
+
 **3b. Nano Banana shots** (`source: nano`), made by the user (skip this if there are none):
 1. Run `python3 keyframes.py <slug>`. It writes `keyframes/NANO_BANANA.md`: one ready-to-paste prompt per asset reference sheet and per
-   nano shot (code3d shots are listed as "skip"), with the exact filename and which reference image to upload. Give the user the path.
+   nano shot (code3d and faceless shots are listed as "skip"), with the exact filename and which reference image to upload. Give the user the path.
 2. **Wait for the user** to drop the frames in. Never call an image API.
 3. When the user says `continue <slug>`, run `python3 keyframes.py <slug> --check`. It renames loose names (`s1.png`, `S01 (1).jpg`),
    centre-crops to 9:16, normalises to 1080x1920 PNG (originals kept in `keyframes/originals/`), flags low-resolution frames and builds
-   `qa/keyframes_sheet.jpg` across both sources. It exits non-zero while any nano frame is missing or any code3d shot is unrendered.
+   `qa/keyframes_sheet.jpg` across all sources. It exits non-zero while any nano frame is missing or any code3d or faceless shot is unrendered.
 4. View the contact sheet. Flag clear failures with a fix for that shot's prompt: text or letters in the image, a visible watermark,
-   broken anatomy, the wrong subject, a mismatched world, a frame that lost its subject in the 9:16 crop, or a look that clashes with the 3D shots.
+   broken anatomy, the wrong subject, a mismatched world, a frame that lost its subject in the 9:16 crop, or a look that clashes with the 3D
+   or faceless shots. For faceless shots, also ask the faceless-shorts QA questions (one visual mode per shot, props move with what
+   holds them, nothing in the caption zone).
 
 ### GATE 2: look approval (stop and wait)
 Show the contact sheet path and your notes. Ask which shots to redo, if any. The user replaces `keyframes/Sxx.png` and you re-run `--check`.
 
 ## Stage 4: Prompt pack (hybrid clips)
-Run `python3 prompt_pack.py <slug>` (code3d shots are skipped because they already have clips). Give the user the path of `prompt_pack.md` and a short summary of the steps: which hero shots
+Run `python3 prompt_pack.py <slug>` (code3d and faceless shots are skipped because they already have clips). Give the user the path of `prompt_pack.md` and a short summary of the steps: which hero shots
 need clips, which free tools to use (free-video-tiers.md), and the exact filenames.
 
 ### GATE 3 (optional)
@@ -142,6 +164,8 @@ This makes every Short better than the last one. Do it even when the project wen
 5. **Report** to the user in 3-6 lines: the lessons added or refined, any rule promoted (file and section), and any code changes proposed.
 
 ## Hard rules
+- Requests for a Short in this workspace go through this pipeline (EN + TA). The faceless-shorts skill is used only as the
+  `faceless` visual source, never as a separate end-to-end path, unless the user asks for a standalone faceless-shorts video.
 - $0: never call paid APIs or add paid services. If a free source fails, report it and offer the manual drop-in path.
 - No real people's likenesses, celebrities, logos, brand names, or another creator's name or branding, in prompts, titles or metadata.
 - Facts must trace to research.md sources. Medical and safety topics are explanatory only.

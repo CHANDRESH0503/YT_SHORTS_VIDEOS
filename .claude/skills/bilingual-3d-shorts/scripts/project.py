@@ -12,8 +12,8 @@ import datetime as dt
 import json
 import re
 
-from common import (CAMERA_MOVES, CLIP_EXTS, IMG_EXTS, LANGS, ROLES, die, end_card_sec, find_file, iter_shots,
-                    load_beats, load_config, narration_text, project_dir, projects_dir, slugify)
+from common import (CAMERA_MOVES, CLIP_EXTS, CODE_SOURCES, IMG_EXTS, LANGS, ROLES, SOURCES, die, end_card_sec, find_file, iter_shots,
+                    faceless_styles, load_beats, load_config, narration_text, project_dir, projects_dir, slugify)
 
 SUBDIRS = ["keyframes", "clips", "audio/en", "audio/ta", "sfx", "final", "qa"]
 
@@ -104,7 +104,7 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
     if "twist" not in roles:
         warns.append("no 'twist' beat - curiosity loop will feel flat")
     check_narrative(beats, errs, warns)
-    seen, n_shots, heroes, n_code = set(), 0, 0, 0
+    seen, n_shots, heroes, n_code, n_face = set(), 0, 0, 0, 0
     for b in beats["beats"]:
         if b.get("role") not in ROLES:
             errs.append(f"{b['id']}: role must be one of {ROLES}")
@@ -127,11 +127,12 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
                     errs.append(f"{s['id']}: unknown asset_ref '{r}'")
             heroes += bool(s.get("hero"))
             src = s.get("source")
-            if src not in ("code3d", "nano"):
-                errs.append(f"{s['id']}: source must be 'code3d' or 'nano' (decide per references/visual-source-decision.md)")
+            if src not in SOURCES:
+                errs.append(f"{s['id']}: source must be one of {SOURCES} (decide per references/visual-source-decision.md)")
             elif not s.get("source_reason"):
                 warns.append(f"{s['id']}: add a short source_reason")
             n_code += src == "code3d"
+            n_face += src == "faceless"
             ov = s.get("overlay")
             if ov:
                 if ov.get("kind") not in ("number", "icon", "label"):
@@ -141,21 +142,28 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
                     if trig and trig.lower() not in b["narration"][lang].lower():
                         warns.append(f"{s['id']}: overlay trigger '{trig}' not found in {b['id']} narration.{lang}")
     vp = beats.get("visual_plan")
-    if not vp or vp.get("mode") not in ("code3d", "nano", "hybrid") or not vp.get("reason"):
-        errs.append("visual_plan {mode: code3d|nano|hybrid, reason} missing - decide per references/visual-source-decision.md")
+    if not vp or vp.get("mode") not in (*SOURCES, "hybrid") or not vp.get("reason"):
+        errs.append("visual_plan {mode: code3d|nano|faceless|hybrid, reason} missing - decide per references/visual-source-decision.md")
     elif n_shots:
-        share = n_code / n_shots
-        expect = "code3d" if share >= 0.999 else "nano" if n_code == 0 else "hybrid"
-        if vp["mode"] != expect and not (vp["mode"] == "code3d" and share >= 0.7):
-            warns.append(f"visual_plan.mode is '{vp['mode']}' but {n_code}/{n_shots} shots are code3d")
+        n_nano = n_shots - n_code - n_face
+        counts = {"code3d": n_code, "nano": n_nano, "faceless": n_face}
+        used = [k for k, v in counts.items() if v]
+        expect = used[0] if len(used) == 1 else "hybrid"
+        top = max(counts, key=counts.get)
+        if vp["mode"] != expect and not (vp["mode"] == top and counts[top] / n_shots >= 0.7):
+            warns.append(f"visual_plan.mode is '{vp['mode']}' but shots are code3d {n_code} / nano {n_nano} / faceless {n_face}")
         if 0 < n_code <= 2:
             warns.append(f"only {n_code} code3d shot(s) - building a 3D rig for so few is rarely worth it")
+        if 0 < n_face <= 2:
+            warns.append(f"only {n_face} faceless shot(s) - setting up a faceless-shorts scene set for so few is rarely worth it")
+        if n_face and vp.get("faceless_style") not in faceless_styles():
+            errs.append(f"visual_plan.faceless_style must be one of {faceless_styles()} when any shot is 'faceless'")
     if not 12 <= n_shots <= 24:
         warns.append(f"{n_shots} shots (aim 14-20 so each lasts 2-4s)")
     if not 3 <= heroes <= 10:
         warns.append(f"{heroes} hero shots (aim 5-8)")
 
-    stats = {"beats": n_beats, "shots": n_shots, "hero_shots": heroes, "code3d_shots": n_code, "nano_shots": n_shots - n_code}
+    stats = {"beats": n_beats, "shots": n_shots, "hero_shots": heroes, "code3d_shots": n_code, "faceless_shots": n_face, "nano_shots": n_shots - n_code - n_face}
     for lang in LANGS:
         text, _ = narration_text(beats, lang)
         cps = cfg["voice"][lang]["chars_per_sec"]
@@ -200,8 +208,9 @@ def cmd_status(a):
         beats = load_beats(p)
         shots = [s for _, s in iter_shots(beats)]
         out["keyframes"] = f"{sum(bool(find_file(p / 'keyframes', s['id'], IMG_EXTS)) for s in shots)}/{len(shots)}"
-        out["nano_frames_missing"] = [s["id"] for s in shots if s.get("source") != "code3d" and not find_file(p / "keyframes", s["id"], IMG_EXTS)]
+        out["nano_frames_missing"] = [s["id"] for s in shots if s.get("source") not in CODE_SOURCES and not find_file(p / "keyframes", s["id"], IMG_EXTS)]
         out["code3d_renders_missing"] = [s["id"] for s in shots if s.get("source") == "code3d" and not find_file(p / "clips", s["id"], CLIP_EXTS)]
+        out["faceless_renders_missing"] = [s["id"] for s in shots if s.get("source") == "faceless" and not find_file(p / "clips", s["id"], CLIP_EXTS)]
         heroes = [s["id"] for s in shots if s.get("hero")]
         have = [s["id"] for s in shots if find_file(p / "clips", s["id"], CLIP_EXTS)]
         out["clips_present"] = have
