@@ -15,6 +15,7 @@ Channels (from `config.json`): **en → "How is this"**, **ta → "How is this -
 Paths: `PK=YT_VIDEOS/.claude/skills/shorts-publish-kit`. Run the scripts as `python3 $PK/scripts/publish_kit.py <cmd> <slug>`.
 The thumbnail is rendered by the `Thumbnail` Still in `bilingual-3d-shorts/remotion` (same fonts as the video, so Tamil shaping is correct).
 Read `references/seo-playbook.md` before writing any copy.
+Also read the "Publish kit" section of `../bilingual-3d-shorts/references/learnings.md` (lessons from past kits).
 
 ## Steps
 1. **Precondition:** `final/<slug>_en.mp4` and `final/<slug>_ta.mp4` exist and `qa_report.md` has no FAIL.
@@ -30,6 +31,8 @@ Read `references/seo-playbook.md` before writing any copy.
 6. **Finalize:** run `publish_kit.py finalize <slug>` (or `all` for steps 4-6 in one go).
 7. **Report:** give the user the 4 thumbnail paths and the 2 publish files, with the chosen titles and one line on why that frame
    was picked. Never upload or publish anything; the user does that.
+8. **Feedback loop:** run bilingual-3d-shorts Stage 9 (`../bilingual-3d-shorts/SKILL.md`). Record thumbnail, title and SEO lessons
+   from this kit (frames rejected, text that didn't fit, user edits) in learnings.md "Publish kit".
 
 ## Rules
 - Titles and thumbnails must be true to the video: no clickbait the video doesn't pay off.

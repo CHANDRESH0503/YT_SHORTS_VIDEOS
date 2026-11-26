@@ -15,15 +15,19 @@ Paths: `SK=YT_VIDEOS/.claude/skills/bilingual-3d-shorts`, scripts in `$SK/script
 projects in `YT_VIDEOS/projects/<slug>/`. Read these when you reach the step that needs them:
 `references/script-playbook.md`, `references/style-guide.md`, `references/prompt-library.md`,
 `references/voice-and-captions.md`, `references/free-video-tiers.md`, `references/qa-checklist.md`.
+`references/learnings.md` is the feedback-loop log of lessons from past Shorts: read it at Stage 0, update it at Stage 9.
 
 ## Invocation
 - `/bilingual-3d-shorts <one-line idea>` starts a new project.
 - `/bilingual-3d-shorts continue <slug>` resumes. Run `python3 project.py status <slug>` and continue from the first incomplete stage.
+  If every stage is done but `projects/<slug>/retro.md` is missing, run Stage 9.
 - `/bilingual-3d-shorts doctor` runs `python3 doctor.py --tamil`, then view `$SK/qa_tamil_test.png` and check the Tamil shaping.
 
 ## Stage 0: Preflight (each new project)
 Run `python3 doctor.py`. If disk, Remotion, the ElevenLabs key or the SFX kit FAILs, stop and tell the user the exact fix.
 Never print or echo the contents of `.env`.
+Then read `references/learnings.md` and apply every lesson that fits this project (prompt fixes, pacing, visual-source choices,
+user preferences). At Gate 1, add one line saying which past lessons you applied.
 
 ## Stage 1: Research and angle
 1. `python3 project.py init "<idea>"` → slug.
@@ -109,6 +113,7 @@ Clips can be added later and only Stages 6-7 need re-running.
    Also run the explanation check: listen to each language once and confirm the "why" in every mechanism beat is audible, not lost to fast pacing.
 3. Run Stage 8 below before Gate 4. It replaces the old hand-written `metadata_<lang>.md`.
 4. **GATE 4.** Show the final paths (videos, SRTs, `thumbnail_<lang>.jpg` (9:16) and `thumbnail_<lang>_16x9.jpg` (16:9), `publish_<lang>.md`), the chosen titles, QA results, a one-line summary of anything you could not verify, and the remaining ElevenLabs credits.
+   Also ask: "Anything you'd want done differently next time?" (optional, feeds Stage 9).
    Never upload or publish anything. The user publishes.
 
 ## Stage 8: Publish kit (after QA passes)
@@ -116,6 +121,25 @@ Invoke the **shorts-publish-kit** skill for `<slug>`, or follow `../shorts-publi
 thumbnails, titles, descriptions, tags and hashtags for both channels: English → **How is this**, Tamil → **How is this - Tamil**.
 Its files are `final/thumbnail_<lang>.jpg` (9:16), `final/thumbnail_<lang>_16x9.jpg` (16:9) and `final/publish_<lang>.md`.
 Only start it once `qa.py` has no FAIL.
+
+## Stage 9: Feedback loop (last step of every project, after Gate 4)
+This makes every Short better than the last one. Do it even when the project went smoothly.
+1. **Collect** what this project taught, from the whole session and the project files: user edits and rejections at Gates 1-4,
+   keyframes redone (and the prompt fix that worked), QA FAILs and their fixes, voice re-renders for length, render or timeline errors,
+   free-tool failures and workarounds, things the user praised, and the user's answer to the Gate 4 question.
+2. **Filter.** Keep a lesson only if it is reusable on another topic, verified in this project, and not already a rule.
+   Drop topic-specific facts.
+3. **Write `projects/<slug>/retro.md`:** what went well, what cost retries (with the root cause), and the lessons kept.
+   This file also marks Stage 9 as done.
+4. **Update the skill:**
+   - Add each kept lesson to the right section of `references/learnings.md` in its line format. Refine an existing line instead of duplicating it.
+   - If a lesson is firm (it happened twice or more, or the user stated it as a rule), promote it: edit the reference file it belongs to
+     (prompt-library, style-guide, script-playbook, voice-and-captions, qa-checklist, visual-source-decision, or this SKILL.md),
+     and leave a `→ promoted to …` pointer in learnings.md.
+   - Publish-kit lessons (thumbnails, titles, SEO) go in learnings.md "Publish kit" and, when firm, in `../shorts-publish-kit/references/seo-playbook.md`.
+   - Lessons that need a **script/code change** are not applied silently: list them for the user as proposals and change code only if they approve.
+   - Never weaken a Hard rule through a lesson.
+5. **Report** to the user in 3-6 lines: the lessons added or refined, any rule promoted (file and section), and any code changes proposed.
 
 ## Hard rules
 - $0: never call paid APIs or add paid services. If a free source fails, report it and offer the manual drop-in path.
