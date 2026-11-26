@@ -1,0 +1,133 @@
+{
+  "projects_dir": "projects",
+  "video": {
+    "fps": 30,
+    "width": 1080,
+    "height": 1920,
+    "preroll_sec": 0.15,
+    "tail_sec": 0.7,
+    "max_shot_sec": 4.0
+  },
+  "duration": {
+    "min": 40,
+    "max": 55,
+    "target": 48
+  },
+  "words": {
+    "en": {
+      "min": 110,
+      "max": 150
+    }
+  },
+  "voice": {
+    "provider": "elevenlabs",
+    "model_id": "eleven_multilingual_v2",
+    "output_format": "mp3_44100_128",
+    "max_atempo": 1.1,
+    "en": {
+      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+      "voice_name": "George (premade)",
+      "settings": {
+        "stability": 0.4,
+        "similarity_boost": 0.8,
+        "style": 0.3,
+        "use_speaker_boost": true,
+        "speed": 1.08
+      },
+      "chars_per_sec": 15.39
+    },
+    "ta": {
+      "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+      "voice_name": "George (premade)",
+      "settings": {
+        "stability": 0.45,
+        "similarity_boost": 0.8,
+        "style": 0.25,
+        "use_speaker_boost": true,
+        "speed": 1.05
+      },
+      "chars_per_sec": 14.53
+    }
+  },
+  "image": {
+    "provider": "nano-banana-manual",
+    "note": "Frames are made by the user in the Gemini app / Google AI Studio (Nano Banana) from keyframes/NANO_BANANA.md",
+    "width": 1080,
+    "height": 1920
+  },
+  "style_presets": {
+    "realistic-cgi": "realistic 3D CGI render, Unreal Engine 5 cinematic, stylized-realistic proportions, glossy physically based materials, crisp micro detail, teal and cyan clinical color palette, soft volumetric key light, bright rim light, subtle subsurface scattering, shallow depth of field, cinematic composition, vertical 9:16 frame",
+    "clay-stylized": "stylized 3D animation render, smooth polished clay-like shaders, rounded friendly shapes, subsurface scattering, octane render look, vibrant rim light, soft ambient occlusion, clean studio background, shallow depth of field, vertical 9:16 frame",
+    "macro-anatomy": "3D medical visualization render, macro cross-section cutaway, semi-translucent glossy tissue, bright interior lighting, high contrast specular highlights, teal background haze, extreme close-up 85mm lens, shallow depth of field, vertical 9:16 frame"
+  },
+  "default_style": "realistic-cgi",
+  "prompt_suffix": "no text, no letters, no watermark, no logo, no caption, no split screen, single frame",
+  "captions": {
+    "y_percent": 70,
+    "max_width_percent": 84,
+    "color": "#FFFFFF",
+    "highlight_color": "#FFFFFF",
+    "stroke_px": 7,
+    "shadow": "0 6px 18px rgba(0,0,0,0.75)",
+    "en": {
+      "font": "Inter",
+      "weight": "900",
+      "max_words": 3,
+      "max_chars": 18,
+      "size": 96
+    },
+    "ta": {
+      "font": "Noto Sans Tamil",
+      "weight": "800",
+      "max_words": 2,
+      "max_chars": 16,
+      "size": 88
+    }
+  },
+  "overlay": {
+    "y_percent": 22,
+    "dur_sec": 1.4,
+    "size": 260
+  },
+  "grade": {
+    "tint": "#00B4C8",
+    "tint_opacity": 0.1,
+    "vignette": 0.45,
+    "contrast": 1.08,
+    "saturate": 1.12,
+    "brightness": 1.02
+  },
+  "audio": {
+    "music": "auto",
+    "music_volume": 0.07,
+    "sfx": {
+      "whoosh": 0.45,
+      "pop": 0.55,
+      "riser": 0.35,
+      "impact": 0.7,
+      "ding": 0.4
+    },
+    "target_lufs": -14,
+    "true_peak": -1.0
+  },
+  "end_card": {
+    "enabled": true,
+    "dur_sec": 2.5,
+    "logo": {
+      "en": "brand/icon_en.png",
+      "ta": "brand/icon_ta.png"
+    },
+    "channel": {
+      "en": "How is this",
+      "ta": "How is this - Tamil"
+    },
+    "cta": {
+      "en": "SUBSCRIBE",
+      "ta": "SUBSCRIBE பண்ணுங்க!"
+    },
+    "subline": {
+      "en": "for more \"how does that work?\"",
+      "ta": "இன்னும் நிறைய தெரிஞ்சுக்க!"
+    }
+  }
+}

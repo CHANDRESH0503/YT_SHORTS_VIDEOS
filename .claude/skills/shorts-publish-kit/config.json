@@ -1,0 +1,38 @@
+{
+  "channels": {
+    "en": {"name": "How is this", "lang_label": "English"},
+    "ta": {"name": "How is this - Tamil", "lang_label": "Tamil"}
+  },
+  "channel_lines": {
+    "en": "Subscribe to How is this for quick answers to everyday \"how does that work?\" questions.",
+    "ta": "இப்படி \"இது எப்படி வேலை செய்யுது?\"-ன்னு தெரிஞ்சுக்க How is this - Tamil சேனலை Subscribe பண்ணுங்க!"
+  },
+  "cross_links": {
+    "en": "Watch this in Tamil on How is this - Tamil.",
+    "ta": "இதே வீடியோ English-ல: How is this சேனல்ல பாருங்க."
+  },
+  "attribution": {
+    "enabled": true,
+    "en": "Voice generated with ElevenLabs.",
+    "ta": "குரல்: ElevenLabs"
+  },
+  "limits": {
+    "title_max": 100,
+    "title_target": 60,
+    "thumb_words_max": 5,
+    "thumb_chars_max": 34,
+    "hashtags_min": 3,
+    "hashtags_max": 5,
+    "tags_min": 10,
+    "tags_max": 20,
+    "tags_chars_max": 500,
+    "description_max": 5000,
+    "tamil_script_min_ratio": 0.4
+  },
+  "thumbnail": {
+    "accent": "#7DF9FF",
+    "jpeg_quality": 95,
+    "landscape": [1280, 720]
+  },
+  "banned_terms": []
+}

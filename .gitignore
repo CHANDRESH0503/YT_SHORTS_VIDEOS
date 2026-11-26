@@ -1,0 +1,4 @@
+.env
+projects/*/final/.*_raw.mp4
+.claude/skills/bilingual-3d-shorts/remotion/node_modules
+.DS_Store
