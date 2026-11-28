@@ -49,7 +49,15 @@ def tamil_ratio(s: str) -> float:
     return len(TAMIL.findall(s)) / max(1, len(letters))
 
 
-def build_description(pub: dict, lang: str, kc: dict) -> str:
+def voice_provider(pdir: Path | None, lang: str) -> str:
+    """Which TTS made this language's narration (audio/<lang>/words.json "provider"; older renders are ElevenLabs)."""
+    f = pdir / "audio" / lang / "words.json" if pdir else None
+    if not f or not f.exists():
+        return "elevenlabs"
+    return json.loads(f.read_text()).get("provider", "elevenlabs")
+
+
+def build_description(pub: dict, lang: str, kc: dict, pdir: Path | None = None) -> str:
     L = pub[lang]
     parts = [L["hook_line"].strip(), L["body"].strip()]
     if pub.get("sources"):
@@ -57,7 +65,7 @@ def build_description(pub: dict, lang: str, kc: dict) -> str:
         parts.append(head + "\n" + "\n".join(f"- {u}" for u in pub["sources"]))
     parts.append(kc["channel_lines"][lang])
     parts.append(kc["cross_links"][lang])
-    if kc["attribution"]["enabled"]:
+    if kc["attribution"]["enabled"] and voice_provider(pdir, lang) == "elevenlabs":  # the free-tier ElevenLabs credit line
         parts.append(kc["attribution"][lang])
     parts.append(" ".join(L["hashtags"]))
     return "\n\n".join(p for p in parts if p)
@@ -156,7 +164,7 @@ def validate(pub: dict, kc: dict, pdir: Path) -> tuple[list[str], list[str]]:
         ch = kc["channels"][lang]["name"]
         if ch.lower() not in [t.lower() for t in tags]:
             warns.append(f"{lang}: add the channel name '{ch}' as a tag")
-        desc = build_description(pub, lang, kc)
+        desc = build_description(pub, lang, kc, pdir)
         if len(desc) > lim["description_max"]:
             errs.append(f"{lang}: description {len(desc)} chars (max {lim['description_max']})")
         if "<" in desc or ">" in desc:
@@ -228,7 +236,7 @@ def cmd_finalize(slug: str) -> None:
         L = pub[lang]
         other = "ta" if lang == "en" else "en"
         ch = kc["channels"][lang]["name"]
-        desc = build_description(pub, lang, kc)
+        desc = build_description(pub, lang, kc, pdir)
         tags = ", ".join(L["tags"])
         alts = "\n".join(f"- {t}" for t in L["title_options"] if t != L["title"])
         if lang == "en":

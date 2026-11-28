@@ -11,6 +11,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { FILM, applyTonemap, makeFinish } from './film.js';
 
 export const W = 1080, H = 1920;
 /** render quality from the URL: ?res=0.6 renders 3D at 60% size (upscaled), ?aa=0 turns MSAA off, ?shadow=1024 */
@@ -31,7 +32,7 @@ const GRADE = {
 export function makeEngine(canvas, { w = W, h = H, samples = 4, shadowSize = 2048 } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
   renderer.setSize(w, h, false); renderer.setPixelRatio(1);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; applyTonemap(renderer);  // look.json may switch to AgX / ACES / Neutral
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.outputColorSpace = THREE.SRGBColorSpace;
   const pmrem = new THREE.PMREMGenerator(renderer), envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples });
@@ -46,10 +47,11 @@ export function makeEngine(canvas, { w = W, h = H, samples = 4, shadowSize = 204
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.35, 0.6, 0.85); composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GRADE); composer.addPass(grade);
+  const fin = makeFinish(w, h); composer.addPass(fin.pass);   // film.js: LUT + halation + edge CA (off without look.json)
   const smaa = new SMAAPass(w, h); composer.addPass(smaa);   // last: cleans edges the post passes leave
   return {
     renderer, envMap, composer,
-    /** look = { bloom, bloomThreshold, focus (m), aperture (0 = all sharp), maxblur, exposure, vignette, grain, warm, t,
+    /** look = { lutMix, halation, ca (film.js; default from look.json), bloom, bloomThreshold, focus (m), aperture (0 = all sharp), maxblur, exposure, vignette, grain, warm, t,
      *          ao (0..1 ambient occlusion; default scene.userData.ao, 0 when unset: keep it 0 for x-ray and glowing sets) } */
     render(scene, camera, look = {}) {
       rp.scene = scene; rp.camera = camera; bokeh.scene = scene; bokeh.camera = camera; gtao.scene = scene; gtao.camera = camera;
@@ -60,6 +62,7 @@ export function makeEngine(canvas, { w = W, h = H, samples = 4, shadowSize = 204
       bloom.strength = look.bloom ?? 0.3; bloom.threshold = look.bloomThreshold ?? 0.85; bloom.radius = 0.6;
       renderer.toneMappingExposure = look.exposure ?? 1.0;
       grade.uniforms.uVig.value = look.vignette ?? 0.35; grade.uniforms.uGrain.value = look.grain ?? 0.02; grade.uniforms.uWarm.value = look.warm ?? 0.03; grade.uniforms.uTime.value = look.t ?? 0;
+      FILM.cam = camera; fin.update(look);
       composer.render();
     },
   };

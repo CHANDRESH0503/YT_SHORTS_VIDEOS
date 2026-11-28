@@ -42,6 +42,28 @@ def load_config() -> dict:
     return json.loads((SKILL_DIR / "config.json").read_text())
 
 
+def is_long(beats: dict | None) -> bool:
+    """Long-form project (4-12 min, references/long-form-playbook.md): beats.json or outline.json has "format": "long"."""
+    return bool(beats) and beats.get("format") == "long"
+
+
+def fmt_cfg(cfg: dict, beats: dict | None) -> dict:
+    """The config with the long_form overrides applied when the project is long-form (else cfg unchanged).
+    Never save the returned dict: voice.py calibrates chars_per_sec on the real cfg."""
+    if not is_long(beats) or "long_form" not in cfg:
+        return cfg
+    lf = cfg["long_form"]
+
+    def merge(a: dict, b: dict) -> dict:
+        out = dict(a)
+        for k, v in b.items():
+            out[k] = merge(a[k], v) if isinstance(v, dict) and isinstance(a.get(k), dict) else v
+        return out
+    out = merge(cfg, {k: v for k, v in lf["overrides"].items() if k in ("video", "words", "hook")})
+    out["duration"] = dict(lf["duration"])
+    return out
+
+
 def save_config(cfg: dict) -> None:
     (SKILL_DIR / "config.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
 

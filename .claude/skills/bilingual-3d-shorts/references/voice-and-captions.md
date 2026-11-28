@@ -1,6 +1,25 @@
 # Voice & captions
 
-## ElevenLabs (free tier)
+## Providers (config.json → voice.provider; voice.<lang>.provider for one language; `voice.py … --provider` for one run)
+Both write the same `audio/<lang>/vo.mp3` + `words.json` (one entry per script word, mapped to beats), so the timeline,
+captions and QA don't care which one made the voice. words.json records `provider` and `timing`.
+
+| provider | cost | Tamil | word timing | limits / catches |
+|---|---|---|---|---|
+| `elevenlabs` | free tier ~10k chars/month | yes | engine (per character) | ≤ 10,000 chars per request (one take ≈ 11 min); free tier non-commercial + attribution |
+| `edge` | free, no account | ta-IN-ValluvarNeural (m), ta-IN-PallaviNeural (f) | engine (WordBoundary) | unofficial route to Microsoft's Edge "Read Aloud" voices: can change or stop without notice, commercial terms unclear; 24 kHz 48 kbps mono mp3; the *Multilingual* voices return no audio |
+
+Tested 2026-11-28 (scratch fixtures, no project):
+- **edge**: a 10,260-character English take came back in one request (10:22 of audio, 2,185 of 2,185 words timed, ~4 min to render);
+  13.9 KB of Tamil kept continuous, monotonic timings (last word 0.17 s before the audio end). Edge pauses ~0.85 s at a Tamil full stop,
+  so the §2d flow check (`flow.max_gap_sec` 0.7) flags them: join sentences with commas, or try `voice.edge.ta.rate` "+5%".
+- Before the first real render with a new provider, audition both languages: `python3 voice.py sample "<one line>" --lang ta
+  --provider edge --out /tmp/x.mp3` (`voice.py voices --provider edge` lists names). chars_per_sec calibration is shared:
+  the first render after a switch may land a little off the estimate, then it re-calibrates.
+- Recommended: **edge** for long-form and when ElevenLabs credits run out; **elevenlabs** stays the default for Shorts.
+- Not used: Google Cloud TTS (Chirp 3 HD) needs a billing account even for its free tier, which the user can't have (2026-11-28).
+
+## ElevenLabs (free tier, provider `elevenlabs`)
 - ~10,000 characters / month. A ~45 s bilingual video ≈ 750 EN + 800 TA chars ≈ **~1,600 chars** → ~6 videos/month;
   a 90 s one ≈ 1,350 + 1,400 ≈ **~2,800 chars** → ~3 videos/month. Another reason to use the shortest length that explains it.
 - **Free tier = non-commercial + attribution required.** Every `metadata_*.md` must include the attribution line
@@ -27,6 +46,15 @@
 - After each render voice.py reports `hook_end_sec` and every pause > `flow.max_gap_sec`; fix the text and re-render if the
   hook ends after 4 s or the narration stalls mid-idea.
 - Credits are checked before every render; a render is refused if credits are insufficient.
+
+## Sound bed, score and sweeteners (timeline.py)
+- **Ambience** (`ambience` top level or per beat): a looping room-tone bed at `audio.sfx.ambience` (0.35 of a -30 LUFS file),
+  6-frame crossfades at set changes, ducked to `audio.ambience_duck` (60%) under speech.
+- **Music in segments** (`music_cues`): drops, mood switches (15-frame crossfade) and stingers. A drop resumes the same track
+  where it would have been (`trimBefore`), so it feels like the music held its breath, not restarted. The last segment
+  plays out under the end card. Each segment keeps the speech duck curve.
+- **Sweeteners**: `tick.wav` every 3 frames while a counter/gauge runs, then a pop when it lands; `subdrop.wav` under every
+  flash cut (felt more than heard). `python3 sfx.py` synthesises stopgaps for all of these; real CC0 files (DOWNLOADS.md) sound better.
 
 ## Captions
 - Built from real word timings (no guessing). EN: up to 3 words / 18 chars per chunk; TA: up to 2 words / 16 chars.

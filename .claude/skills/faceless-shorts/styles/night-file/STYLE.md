@@ -25,6 +25,25 @@ The 3D core (`engine.js`, `sdf.js`, `human.js`) is shared with Deep Dive 3D (see
 People: `new Human({ face: false })` then `.setAllMaterial(SETS.subjectMat())` or `witnessMat()`. Sitting: hips y 0.66,
 `hipL/hipR [88, 0, 2]`, `knL/knR 88`.
 
+## Film, camera and motion (core/film.js, core/motion.js)
+Shared by the 3D styles (identical copies in deep-dive, night-file and tall-tale: edit them together).
+- **Film finish**: `look.json` in the project root (written by the bilingual pipeline's `faceless.py`, or by hand:
+  `{"tonemap": "aces", "lut": "look/lut.cube", "lut_mix": 0.9, "halation": 0.35, "ca": 0.8}`) turns on a 3D LUT, halation
+  and edge chromatic aberration after the grade pass. Without it the engine looks exactly as before. Per render:
+  `E.render(scene, cam, { ...LOOK, lutMix, halation, ca })`. ACES + LUT beats AgX on these sets.
+- **Camera language**: `dolly(cam, [p0, p1, p2], p, lookAt)` (walk through the set), `orbitAround(cam, target, {r, h, a0, a1}, p)`,
+  `craneReveal(cam, target, {from, to}, p)` (payoffs), `scaleJump(cam, target, dir, near, far, p)` (macro ↔ wide),
+  `handheld(cam, t, 0.008)` after any move. `p` = 0..1 shot progress; the helpers ease it.
+- **Animation principles** (`motion.js`, pure functions of time): `anticip(t, t0, dur)` (dip back, then go),
+  `overshoot(t, t0, dur)` / `spring(t, t0)` (settle), `follow(fn, t, lag)` (secondary parts lag: tails, hair, cables, splash),
+  `squash(t, impactT)` → `{y, xz}` scale (volume kept), `stagger(t, t0, i)` (one element at a time).
+  Rule: every key action = anticipation → move → overshoot; one follow-through element per hero moving part; one focal motion per shot.
+- **Speed ramp / rack focus**: `lt = ramp(lt, fx('S04').ramp)` at the top of a shot plays its event in slow motion and keeps
+  it on the same wall time; `focus: focusPull(lt, fx('S10').focus_pull, 3)` pulls focus on the key word. `fx(id)` reads
+  `slots.json` (bilingual pipeline) or returns nulls.
+- **Pins**: `pin('beak', vec3)` right after `E.render` logs where that point lands on screen; `capture.mjs video` writes
+  `<clip>.pins.json` and the pipeline's `pin` overlay sticks a label to it as the camera moves.
+
 ## 3. Story shape
 Date + place → the person (subject glowing) → the strange event, step by step, each step an evidence insert or a slow
 3D shot → the moment it goes wrong (one hard sound) → what was found later (case wall, date) → the open question,

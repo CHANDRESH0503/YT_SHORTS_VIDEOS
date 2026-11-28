@@ -95,3 +95,8 @@ soft) · `zip` (fast exit) · `alarm` (dur, low danger pulse). All soft and roun
 - A moving object crossing a label or counter (the gum zipping through "DAY 3") → give moving things their own lane.
 - A caption landing a word early → put `caps` chunk boundaries on real spoken words; check `capture.mjs check` output.
 - Things hidden under the caption → keep key action above y 1250.
+
+## Motion polish (core/motion.js)
+Pure easing helpers shared with the 3D styles: `anticip`, `overshoot`, `spring`, `follow`, `squash` (→ `{y, xz}`), `stagger`,
+`ramp`. Every key action = anticipation → move → overshoot settle; one follow-through element per moving hero part
+(hair, tail, cape, shadow); stagger groups so one thing moves at a time.

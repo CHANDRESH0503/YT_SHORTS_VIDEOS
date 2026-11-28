@@ -117,13 +117,24 @@ else {
         ...(hasMix ? ['-ss', String(a0), '-t', String(a1 - a0), '-i', mix] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']), '-map', '0:v', '-map', '1:a',
         '-c:v', 'libx264', '-preset', flags.has('--draft') ? 'ultrafast' : 'veryfast', '-crf', flags.has('--draft') ? '28' : '18', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out], { stdio: ['pipe', 'inherit', 'inherit'] });
-      const t0 = Date.now();
+      const t0 = Date.now(); await P.ev('OP.clearPins ? OP.clearPins() : 0');
       for (let i = 0; i < n; i++) {
         const b = jpg(await P.ev(FRAME(a0 + i / FPS, flags.has('--draft') ? 0.8 : 0.93)));
         if (!ff.stdin.write(b)) await new Promise((r) => ff.stdin.once('drain', r));
         if (i % 150 === 0) process.stdout.write(`\r${i}/${n} frames`);
       }
       ff.stdin.end(); await new Promise((r) => ff.on('close', r));
+      // pins (film.js pin()): screen position per frame of named 3D points → <out>.pins.json, times local to the clip
+      const log = await P.ev('OP.pins ? OP.pins() : []');
+      if (log.length) {
+        const pins = {};
+        for (let i = 0; i < n; i++) {
+          const t = a0 + i / FPS; let best = {};
+          for (const [pt, id, x, y, vis] of log) { const e = Math.abs(pt - t); if (e < 0.6 / FPS && (!best[id] || e < best[id].e)) best[id] = { e, v: [+(i / FPS).toFixed(4), x, y, vis] }; }
+          for (const id in best) (pins[id] ||= []).push(best[id].v);
+        }
+        fs.writeFileSync(out.replace(/\.mp4$/, '') + '.pins.json', JSON.stringify(pins));
+      }
       console.log(`\r${out} (${n} frames, ${hasMix ? 'with data/mix.wav' : 'SILENT: no data/mix.wav'}, ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
     } else console.log('modes: check · cues · sheet · frames · video · preview');
   } finally { P.close(); srv.close(); }

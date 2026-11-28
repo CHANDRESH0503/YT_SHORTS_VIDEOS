@@ -13,14 +13,16 @@ import argparse
 import json
 import math
 import shutil
+from pathlib import Path
 
-from common import (ASSETS_DIR, CLIP_EXTS, IMG_EXTS, LANGS, ROOT, die, end_card_sec, ffprobe_duration, find_file, load_beats,
+from common import (ASSETS_DIR, CLIP_EXTS, IMG_EXTS, LANGS, ROOT, die, end_card_sec, ffprobe_duration, find_file, fmt_cfg, load_beats,
                     load_config, norm_word, project_dir)
 
 ALT_MOVE = {"push_in": "pull_out", "pull_out": "push_in", "pan_left": "pan_right", "pan_right": "pan_left",
             "tilt_up": "tilt_down", "tilt_down": "tilt_up", "orbit_left": "orbit_right", "orbit_right": "orbit_left",
             "static_drift": "push_in"}
 OVERLAY_COLORS = {"number": "#E8F1F5", "icon": "#FFFFFF", "label": "#7DF9FF", "hook": "#FFD43B"}
+INFOGRAPHICS = ("counter", "gauge", "compare", "scale", "pin")   # Infographic.tsx; colour = the video's accent
 END_PUNCT = tuple(".?!,;:…।")
 AUDIO_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".ogg")
 
@@ -60,9 +62,62 @@ def duck_curve(words: list, pre: float, fps: int, total: int, ramp: int = 9, hol
     return pts
 
 
+def find_word(words: list, beat_id: str, trig: str | None, pre: float, fps: int) -> int | None:
+    """Frame where the first word of `trig` is spoken inside beat `beat_id` (None if not found)."""
+    key = norm_word(trig.split()[0]) if trig else ""
+    for w in words:
+        if key and w.get("beat") == beat_id and norm_word(w["text"]).startswith(key):
+            return int(round((pre + w["start"]) * fps))
+    return None
+
+
+def resolve(v, lang: str):
+    """{en, ta} -> that language's value; anything else as is."""
+    return v.get(lang, v.get("en")) if isinstance(v, dict) and set(v) & {"en", "ta"} else v
+
+
+def pin_track(pdir, segs: list, shot_id: str, pin_id: str, f0: int, dur: int, fps: int) -> list | None:
+    """Screen track [[k, x, y, visible], ...] (k = frame from overlay start, x/y 0..1) of a 3D point logged by film.js pin()
+    in clips/<shot>.pins.json, mapped through the clip's trim/speed and the Shot layer's 1.02->1.07 clip scale."""
+    pf = pdir / "clips" / f"{shot_id}.pins.json"
+    if not pf.exists():
+        return None
+    track = json.loads(pf.read_text()).get(pin_id)
+    if not track:
+        return None
+    out = []
+    for k in range(dur):
+        f = f0 + k
+        sg = next((s for s in segs if s["shot"] == shot_id and s["from"] <= f < s["from"] + s["dur"] and s["clip"]), None)
+        if not sg or f - sg["from"] >= sg["clip"]["frames"]:
+            out.append([k, 0.5, 0.5, 0])
+            continue
+        ct = (sg["clip"]["startFrom"] + (f - sg["from"]) * sg["clip"]["playbackRate"]) / fps
+        i = min(range(len(track)), key=lambda j: abs(track[j][0] - ct))
+        _, x, y, vis = track[i]
+        sc = 1.02 + 0.05 * (f - sg["from"]) / max(1, sg["dur"])
+        out.append([k, round(0.5 + (x - 0.5) * sc, 4), round(0.5 + (y - 0.5) * sc, 4), vis])
+    return out
+
+
+def music_file(spec: str | None, mood: str | None, music_cfg) -> "Path | None":
+    """A track: an exact file under assets/music/ (spec), else the first file of the mood folder."""
+    if spec:
+        c = ASSETS_DIR / "music" / spec
+        return c if c.exists() else None
+    if mood and (ASSETS_DIR / "music" / mood).is_dir():
+        cands = sorted((ASSETS_DIR / "music" / mood).glob("*"))
+    elif music_cfg == "auto":
+        cands = sorted(f for d in (ASSETS_DIR / "music").iterdir() if d.is_dir() and d.name != "stingers" for f in d.glob("*"))
+    else:
+        cands = [ASSETS_DIR / "music" / music_cfg]
+    return next((c for c in cands if c.suffix.lower() in AUDIO_EXTS and c.exists()), None)
+
+
 def build(slug: str, lang: str, cfg: dict) -> dict:
     pdir = project_dir(slug)
     beats = load_beats(pdir)
+    cfg = fmt_cfg(cfg, beats)  # long-form shot length / hook limits when beats.format == "long"
     wfile = pdir / "audio" / lang / "words.json"
     if not wfile.exists():
         die(f"{wfile} missing - run voice.py render {slug} --lang {lang}")
@@ -162,6 +217,8 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
                          "words": [{"text": clean(w["text"]), "from": F(pre + w["start"]), "to": F(pre + w["end"])} for w in ch]})
 
     # ---- overlays ----
+    grade_name, grade = pick_grade(beats, cfg)
+    accent = (beats.get("visual_plan") or {}).get("accent") or grade.get("accent") or "#FFD43B"
     overlays, ov_dur = [], int(cfg["overlay"]["dur_sec"] * fps)
     first_seg = {}
     for sg in segs:
@@ -180,10 +237,23 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
                     if w.get("beat") == b["id"] and key and norm_word(w["text"]).startswith(key):
                         at = F(pre + w["start"]) - 2
                         break
-            text = ov["text"][lang] if isinstance(ov.get("text"), dict) else ov.get("text", "")
-            d = int(ov["dur_sec"] * fps) if ov.get("dur_sec") else ov_dur
-            overlays.append({"from": max(0, at), "dur": min(d, total - at), "text": text, "kind": ov["kind"],
-                             "color": ov.get("color", OVERLAY_COLORS[ov["kind"]]), "seg": ov.get("seg")})
+            text = resolve(ov.get("text", ""), lang) or ""
+            kind = ov["kind"]
+            d = int(ov["dur_sec"] * fps) if ov.get("dur_sec") else (int(ov_dur * 1.5) if kind in INFOGRAPHICS else ov_dur)
+            o = {"from": max(0, at), "dur": min(d, total - at), "text": text, "kind": kind,
+                 "color": ov.get("color", accent if kind in INFOGRAPHICS else OVERLAY_COLORS[kind]), "seg": ov.get("seg")}
+            if kind in INFOGRAPHICS:
+                data = {k: resolve(v, lang) for k, v in ov.items() if k not in ("kind", "trigger", "text", "color", "dur_sec", "seg")}
+                if kind == "compare":
+                    data["items"] = [{"label": resolve(it.get("label", ""), lang), "value": it["value"]} for it in ov.get("items", [])]
+                if kind == "pin":
+                    tr = pin_track(pdir, segs, s["id"], ov.get("pin", ""), o["from"], o["dur"], fps)
+                    if tr is None:
+                        print(f"WARN {lang}: {s['id']} pin '{ov.get('pin')}' has no clips/{s['id']}.pins.json track - "
+                              "call pin() in shots.js and re-export; the label sits at the fallback point")
+                    data["track"] = tr
+                o["data"] = data
+            overlays.append(o)
 
     # ---- hook title: 3-6 words on screen from frame 0 (sound-off viewers), held until the spoken hook lands ----
     hc = cfg.get("hook") or {}
@@ -225,7 +295,7 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
                     key = norm_word(trig.split()[0])
                     for w in words:
                         if w.get("beat") == b["id"] and key and norm_word(w["text"]).startswith(key):
-                            at = F(pre + w["start"]) + int(fx.get("offset_frames", 0))
+                            at = F(pre + w["start"]) + int(fx.get("offset_frames", 0)) + F(fx.get("offset_ms", 0) / 1000)
                             break
                 sfx.append({"from": max(0, at), "src": f"sfx/foley/{src.name}", "volume": float(fx.get("volume", vol.get("foley", 0.6)))})
     if foley_missing:
@@ -245,28 +315,104 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
         if sg["transition"] == "flash":
             sfx.append({"from": max(0, sg["from"] - 42), "src": "sfx/riser.wav", "volume": vol["riser"]})
             sfx.append({"from": sg["from"], "src": "sfx/impact.wav", "volume": vol["impact"]})
+            if (sfx_dir / "subdrop.wav").exists():   # sweetener: low sub under the hit, felt more than heard
+                sfx.append({"from": sg["from"], "src": "sfx/subdrop.wav", "volume": vol.get("subdrop", 0.5)})
     for o in overlays:
-        sfx.append({"from": o["from"], "src": "sfx/pop.wav", "volume": vol["pop"]})
+        if o["kind"] in ("counter", "gauge") and (sfx_dir / "tick.wav").exists():
+            # ticks while the number / needle runs (Infographic.tsx counts over the first ~55% of the callout), then a pop
+            run_f = int(o["dur"] * 0.55)
+            for k in range(6, run_f, 3):
+                sfx.append({"from": o["from"] + k, "src": "sfx/tick.wav", "volume": round(vol.get("tick", 0.3) * (0.6 + 0.4 * k / run_f), 3)})
+            sfx.append({"from": o["from"] + run_f, "src": "sfx/pop.wav", "volume": vol["pop"]})
+        else:
+            sfx.append({"from": o["from"], "src": "sfx/pop.wav", "volume": vol["pop"]})
     sfx.append({"from": max(0, total - int(tail * fps) - 6), "src": "sfx/ding.wav", "volume": vol["ding"]})
 
-    music = None
+    # ---- music, scored to the story: segments with cues (switch mood / drop out before the twist / stinger on the payoff) ----
+    music = []
     m = cfg["audio"]["music"]
+    beat_start = {b["id"]: w0 for (w0, _), b in zip(windows, beats["beats"])}
+    first_word = lambda bid: next((F(pre + w["start"]) for w in words if w.get("beat") == bid), beat_start.get(bid, 0))  # noqa: E731
     if m and beats.get("music_mood") != "none":
-        mood = beats.get("music_mood")  # assets/music/<mood>/ (see assets/DOWNLOADS.md); beats.music picks one file
-        if beats.get("music"):
-            cands = [ASSETS_DIR / "music" / beats["music"]]
-        elif mood and (ASSETS_DIR / "music" / mood).is_dir():
-            cands = sorted((ASSETS_DIR / "music" / mood).glob("*"))
+        mc = cfg["audio"].get("music_cues") or {}
+        duck_pts = duck_curve(words, pre, fps, total, (cfg.get("flow") or {}).get("duck_ramp_frames", 9),
+                              (cfg.get("flow") or {}).get("duck_hold_sec", 1.2))
+        base = music_file(beats.get("music"), beats.get("music_mood"), m)
+        cues = list(beats.get("music_cues") or [])
+        # default score: drop the bed out just before the first twist line, back in on its first word, unless a
+        # drop/switch cue already sits on that beat or beats.music_auto_drop is false
+        tw = next((b["id"] for b in beats["beats"] if b.get("role") == "twist"), None)
+        if tw and mc.get("auto_drop", True) and beats.get("music_auto_drop", True) and \
+                not any(c.get("at_beat") == tw and c.get("mode", "switch") != "stinger" for c in cues):
+            cues.append({"at_beat": tw, "mode": "drop"})
+        # list of (frame, track, fade_frames) changes; drops are gaps
+        tracks = []   # [{"file", "from", "to", "fadeIn", "fadeOut"}]
+        cur = {"file": base, "from": 0, "fadeIn": 10} if base else None
+        for c in sorted(cues, key=lambda c: beat_start.get(c.get("at_beat"), 10 ** 9)):
+            if c.get("at_beat") not in beat_start:
+                print(f"WARN {lang}: music cue at_beat '{c.get('at_beat')}' is not a beat id - skipped")
+                continue
+            at = find_word(words, c["at_beat"], (c.get("trigger") or {}).get(lang), pre, fps) or first_word(c["at_beat"])
+            mode = c.get("mode", "switch")
+            if mode == "stinger":
+                st = music_file(c.get("file"), c.get("mood", "stingers"), None)
+                if st:
+                    (sfx_dir / "stingers").mkdir(exist_ok=True)
+                    shutil.copy2(st, sfx_dir / "stingers" / st.name)
+                    sfx.append({"from": max(0, at - int(c.get("lead_frames", 2))), "src": f"sfx/stingers/{st.name}",
+                                "volume": float(c.get("volume", vol.get("stinger", 0.5)))})
+                else:
+                    print(f"WARN {lang}: no stinger in assets/music/stingers/ (python3 sfx.py makes a stopgap)")
+                continue
+            if mode == "drop" and cur:
+                gap = F(c.get("drop_sec", mc.get("drop_sec", 0.6)))
+                tracks.append({**cur, "to": max(cur["from"] + 1, at - gap), "fadeOut": 8})
+                cur = {"file": cur["file"], "from": at, "fadeIn": 4, "resume": True}
+            elif mode == "switch":
+                nf = music_file(c.get("file"), c.get("mood"), None)
+                if not nf:
+                    print(f"WARN {lang}: music cue switch to '{c.get('file') or c.get('mood')}' found no file - skipped")
+                    continue
+                xf = int(c.get("xfade_frames", 15))
+                if cur:
+                    tracks.append({**cur, "to": at + xf, "fadeOut": xf})
+                cur = {"file": nf, "from": at, "fadeIn": xf}
+        if cur:
+            tracks.append({**cur, "to": total, "fadeOut": 30})
+        copied = {}
+        for tr in tracks:
+            f = tr["file"]
+            if f not in copied:
+                dst = sfx_dir / f"music{len(copied) or ''}{f.suffix.lower()}"
+                shutil.copy2(f, dst)   # always refresh, so a changed mood/track takes effect
+                copied[f] = f"sfx/{dst.name}"
+            music.append({"src": copied[f], "from": tr["from"], "dur": max(1, tr["to"] - tr["from"]),
+                          # a drop resumes the same track where it would have been (wrapped: the track loops)
+                          "trimBefore": tr["from"] % max(1, F(ffprobe_duration(f))) if tr.get("resume") else 0,
+                          "fadeIn": tr["fadeIn"], "fadeOut": tr["fadeOut"], "volume": cfg["audio"]["music_volume"],
+                          "duck": cfg["audio"].get("music_duck", 1.0), "duckCurve": duck_pts})
+
+    # ---- ambience beds (room tone per beat: beats[].ambience = a name in assets/sfx/ambience/) ----
+    beds = []
+    amb_dir = ASSETS_DIR / "sfx" / "ambience"
+    for (w0, w1), b in zip(windows, beats["beats"]):
+        name = b.get("ambience") or beats.get("ambience")
+        if not name or name == "none":
+            continue
+        src = next((f for f in sorted(amb_dir.glob(f"{name}.*")) if f.suffix.lower() in AUDIO_EXTS), None)
+        if not src:
+            print(f"WARN {lang}: ambience '{name}' not in assets/sfx/ambience/ (python3 sfx.py makes stopgaps; assets/DOWNLOADS.md)")
+            continue
+        (sfx_dir / "ambience").mkdir(exist_ok=True)
+        shutil.copy2(src, sfx_dir / "ambience" / src.name)
+        if beds and beds[-1]["src"].endswith("/" + src.name) and beds[-1]["from"] + beds[-1]["dur"] >= w0:
+            beds[-1]["dur"] = w1 - beds[-1]["from"]   # same bed continues across beats
         else:
-            cands = sorted((ASSETS_DIR / "music").glob("*")) if m == "auto" else [ASSETS_DIR / "music" / m]
-        cands = [c for c in cands if c.suffix.lower() in (".mp3", ".wav", ".m4a", ".aac") and c.exists()]
-        if cands:
-            dst = sfx_dir / f"music{cands[0].suffix.lower()}"
-            shutil.copy2(cands[0], dst)  # always refresh, so a changed mood/track takes effect
-            music = {"src": f"sfx/{dst.name}", "volume": cfg["audio"]["music_volume"],
-                     "duck": cfg["audio"].get("music_duck", 1.0),
-                     "duckCurve": duck_curve(words, pre, fps, total, (cfg.get("flow") or {}).get("duck_ramp_frames", 9),
-                                             (cfg.get("flow") or {}).get("duck_hold_sec", 1.2))}
+            beds.append({"src": f"sfx/ambience/{src.name}", "from": w0, "dur": w1 - w0, "fade": 6,
+                         "volume": vol.get("ambience", 0.35), "duck": cfg["audio"].get("ambience_duck", 0.6)})
+    duck_pts_all = music[0]["duckCurve"] if music else duck_curve(words, pre, fps, total)
+    for bd in beds:
+        bd["duckCurve"] = duck_pts_all
 
     # ---- end card: channel logo + subscribe ask, appended after the last shot ----
     end_card = None
@@ -283,18 +429,24 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
         sfx.append({"from": total, "src": "sfx/whoosh2.wav", "volume": vol["whoosh"]})
         sfx.append({"from": total + 14, "src": "sfx/pop.wav", "volume": vol["pop"]})
         total += end_card["dur"]
+        if music:   # the score plays out under the end card
+            music[-1]["dur"] = total - music[-1]["from"]
 
     cap = cfg["captions"]
-    grade_name, grade = pick_grade(beats, cfg)
+    # clip already graded in-engine (film.js LUT) for every shot -> Remotion's tint only unifies
+    if segs and all(sg["clip"] for sg in segs) and grade.get("engine") and (pdir / "faceless" / "look.json").exists() \
+            and (beats.get("visual_plan") or {}).get("mode") == "faceless":
+        grade = {**grade, "tint_opacity": round(grade.get("tint_opacity", 0) * grade.get("in_engine_tint_scale", 1), 3), "in_engine": True}
+    grade = {k: v for k, v in grade.items() if k not in ("engine", "in_engine_tint_scale")}
     return {
         "lang": lang, "fps": fps, "width": V["width"], "height": V["height"], "durationInFrames": total,
         "vo": {"src": f"audio/{lang}/vo.mp3", "from": F(pre)},
-        "segments": segs, "captions": captions, "overlays": overlays, "sfx": sfx, "music": music, "endCard": end_card,
+        "segments": segs, "captions": captions, "overlays": overlays, "sfx": sfx, "music": music, "beds": beds, "endCard": end_card,
         "captionStyle": {"font": cc["font"], "weight": cc["weight"], "size": cc["size"], "yPercent": cap["y_percent"],
                          "maxWidthPercent": cap["max_width_percent"], "color": cap["color"],
                          "highlight": cap["highlight_color"], "stroke": cap["stroke_px"], "shadow": cap["shadow"]},
         "overlayStyle": {"yPercent": cfg["overlay"]["y_percent"], "size": cfg["overlay"]["size"]},
-        "grade": grade, "gradeName": grade_name,
+        "grade": grade, "gradeName": grade_name, "accent": accent,
     }
 
 
@@ -313,8 +465,11 @@ def main():
                           "max_seg_sec": round(max(s["dur"] for s in segs) / tl["fps"], 2),
                           "clip_segments": sum(1 for s in segs if s["clip"]), "captions": len(tl["captions"]),
                           "overlays": len(tl["overlays"]), "end_card": bool(tl["endCard"]), "grade": tl["gradeName"],
-                          "music": tl["music"]["src"] if tl["music"] else None,
-                          "foley": sum(1 for s in tl["sfx"] if "/foley/" in s["src"])}))
+                          "music": [f"{m['src']}@{m['from'] / tl['fps']:.1f}s" for m in tl["music"]] or None,
+                          "beds": len(tl["beds"]), "sfx": len(tl["sfx"]),
+                          "sfx_per_10s": round(len(tl["sfx"]) / (tl["durationInFrames"] / tl["fps"]) * 10, 1),
+                          "foley": sum(1 for s in tl["sfx"] if "/foley/" in s["src"]),
+                          "infographics": sum(1 for o in tl["overlays"] if o["kind"] in INFOGRAPHICS)}))
 
 
 if __name__ == "__main__":

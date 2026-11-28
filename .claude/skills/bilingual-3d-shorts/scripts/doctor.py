@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import urllib.request
 
-from common import ASSETS_DIR, REMOTION_DIR, ROOT, SKILL_DIR, disk_free_gb, faceless_styles, find_chrome, load_env
+from common import ASSETS_DIR, LANGS, REMOTION_DIR, ROOT, SKILL_DIR, disk_free_gb, faceless_styles, find_chrome, load_config, load_env
 
 
 def check(name, ok, detail="", fix=""):
@@ -46,9 +46,25 @@ def main():
     music = [p.name for p in (ASSETS_DIR / "music").glob("*") if p.suffix.lower() in (".mp3", ".wav", ".m4a")]
     check("background music (optional)", True, music[0] if music else "none - add a royalty-free track to assets/music/")
 
+    # voice providers (references/voice-and-captions.md §Providers): only the ones in use can FAIL
+    vcfg = load_config()["voice"]
+    used = {vcfg[l].get("provider") or vcfg.get("provider", "elevenlabs") for l in LANGS}
+    check("voice provider", True, ", ".join(f"{l}={vcfg[l].get('provider') or vcfg.get('provider', 'elevenlabs')}" for l in LANGS))
+    try:
+        import edge_tts  # noqa: F401, PLC0415
+        has_edge = True
+    except ImportError:
+        has_edge = False
+    if "edge" in used:
+        all_ok &= check("edge voice (edge-tts)", has_edge, "installed" if has_edge else "", fix="python3 -m pip install edge-tts")
+    else:
+        check("edge voice (optional)", True, "installed" if has_edge else "not installed - python3 -m pip install edge-tts to use it")
     key = os.environ.get("ELEVENLABS_API_KEY")
-    all_ok &= check("ELEVENLABS_API_KEY", bool(key), "present (hidden)" if key else "", fix="copy YT_VIDEOS/.env.example to .env and paste your key")
-    if key:
+    if "elevenlabs" in used:
+        all_ok &= check("ELEVENLABS_API_KEY", bool(key), "present (hidden)" if key else "", fix="copy YT_VIDEOS/.env.example to .env and paste your key")
+    else:
+        check("ElevenLabs (optional)", True, "key present (hidden)" if key else "no key - only needed for provider elevenlabs")
+    if key and "elevenlabs" in used:
         try:
             req = urllib.request.Request("https://api.elevenlabs.io/v1/user/subscription", headers={"xi-api-key": key})
             s = json.loads(urllib.request.urlopen(req, timeout=20).read())

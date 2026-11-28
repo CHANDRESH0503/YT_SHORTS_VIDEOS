@@ -1,5 +1,7 @@
 # Script playbook: one line → 35-90s curiosity-loop Short (90 s hard cap)
 
+> **Long videos (4-12 min):** plan in `outline.json` first and follow `long-form-playbook.md`. Every rule here still applies inside each chapter.
+
 ## 1. Research the line (always, before writing)
 Use WebSearch (standard mode; extended only if results are thin). Collect into `research.md`:
 - The **core mechanism** (how/why it actually works), stated simply.
@@ -7,6 +9,9 @@ Use WebSearch (standard mode; extended only if results are thin). Collect into `
 - The **common misconception** people hold (fuel for the hook/twist).
 - A **visual inventory**: what can be *shown* in 3D (objects, places, cross-sections, scale shots).
 - Accuracy flags: anything contested → soften ("scientists think…") or drop it.
+- **Live or contested topics** (court cases, religious or political disputes): mark disputed claims "by tradition" or
+  "X says", state only facts that courts or neutral outlets recorded, and claim no outcome that is still pending. Show
+  objects, places and documents, not crowds, protests or police.
 Pick ONE angle (state it in research.md):
 | Angle | Hook shape | Good for |
 |---|---|---|
@@ -27,6 +32,10 @@ Reject angles that are not visual, need on-screen text to understand, or rely on
 | 35-55 s | 6-9 | 14-20 | 100-140 |
 | 55-75 s | 8-11 | 20-27 | 140-190 |
 | 75-90 s | 10-13 | 26-33 | 190-230 |
+
+**Multi-era stories** (history told through 5+ periods): draft at ≤ 190 EN words / ≤ 1150 TA characters. Each extra era
+costs about 8 s, and the Tamil estimate runs ~7% over the English, so a first draft written to the 230-word cap comes out
+over 90 s in Tamil.
 
 The table below is for a ~45 s Short; for longer ones add mechanism/escalation beats in the middle, never a longer hook or payoff.
 
@@ -210,3 +219,27 @@ Top level: `music_mood` (`tension|curious|upbeat|mystery|none`, a folder in `ass
 Per shot, optional `sfx`: `[{"name": "gulp", "trigger": {"en": "swallow", "ta": "முழுங்க"}, "volume": 0.6, "offset_frames": 0}]`
 (a close-up sound from `assets/sfx/foley/<name>.*`, placed on the trigger word).
 `overlay.text` may be a string (numbers/icons) or `{"en": "...", "ta": "..."}` (labels).
+Per shot `sfx` entries may also take `offset_ms` (e.g. -120 to land a whoosh just before the hit). Layer 2-3 sounds per
+mechanism beat (the action, a texture, a tail); validate warns below ~1 foley every 5 s.
+
+**Sound and score (optional, top level / per beat):**
+- `ambience`: a room-tone bed under the whole video (`room-hum`, `wind`, `river`, `night`, `outdoor`: files in
+  `assets/sfx/ambience/`), or per beat to change it with the set. `"none"` for none.
+- `music_cues`: `[{"at_beat": "B7", "mode": "switch", "mood": "tension"}, {"at_beat": "B8", "mode": "stinger"}]`.
+  `switch` crossfades to another mood (or `file`), `drop` pulls the music out ~0.6 s before that beat's first word and
+  brings it back on it, `stinger` plays a hit from `assets/music/stingers/` (optional `trigger` {en, ta} for the word).
+  Without a drop/switch on the first `twist` beat, timeline.py adds the drop there automatically (`music_auto_drop: false` stops it).
+
+**Infographic overlays (kinetic numbers; style-guide §Overlays):** any number the narration says belongs on screen.
+- `{"kind": "counter", "from": 0, "to": 320, "unit": {"en": "km/h", "ta": "கி.மீ/ம"}, "prefix": "", "decimals": 0, "text": {"en": "top speed", "ta": "அதிக வேகம்"}, "trigger": {...}}`: a number that runs up, with ticks.
+- `{"kind": "gauge", "value": 30, "max": 100, "unit": "%", "text": {...}, "trigger": {...}}`: a dial that fills, the needle overshoots.
+- `{"kind": "compare", "items": [{"label": {"en": "flat nose", "ta": "தட்டை மூக்கு"}, "value": 100}, {"label": {...}, "value": 70}], "unit": "%", "text": {...}}`: 2-3 bars, the biggest in the accent colour.
+- `{"kind": "scale", "text": {"en": "15 m", "ta": "15 மீ"}}`: a ruler that draws itself, for size (macro or huge).
+- `{"kind": "pin", "pin": "beak", "text": {"en": "the original", "ta": "ஒரிஜினல்"}}`: a dot + leader line + label stuck to a 3D point
+  as the camera moves. Needs `pin('beak', vec3)` after `E.render` in that shot of `shots.js` (code-rendered shots only).
+Pick by the claim: a speed / count → counter, a share or level → gauge, A vs B → compare, size → scale, "this part" → pin.
+
+**Film fx for code-rendered shots (`faceless` / `code3d`, read in shots.js with `fx('Sxx')` from core/film.js):**
+- `event_sec`: when the shot's key action happens (seconds into the shot); re-time it to the trigger word after the voice render.
+- `ramp`: `{"slow": 0.35, "len_sec": 0.6, "at_sec": 2.2}`: slow motion around the event (hits, splashes, bursts). ≤ 2 per video.
+- `focus_pull`: `{"from_m": 3, "to_m": 0.8, "at_sec": 1.5}`: rack focus from the background to the subject on the key word.

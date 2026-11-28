@@ -37,6 +37,7 @@ Also read the "Publish kit" section of `../bilingual-3d-shorts/references/learni
 ## Rules
 - Titles and thumbnails must be true to the video: no clickbait the video doesn't pay off.
 - No real people, celebrities, brands, logos or other creators' names in any field.
-- Keep the ElevenLabs attribution while the voices come from the free tier (`config.json → attribution.enabled`).
+- Keep the ElevenLabs attribution while the voices come from the free tier (`config.json → attribution.enabled`). It is added only
+  for a language whose narration ElevenLabs made (`audio/<lang>/words.json → provider`); the edge voice needs no credit line.
   Set it to false only if the user confirms a paid plan.
 - To change a channel name, edit `config.json → channels` (and `channel_lines`/`cross_links`).

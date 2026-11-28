@@ -1,6 +1,6 @@
 ---
 name: bilingual-3d-shorts
-description: Turn a one-line idea into two production-ready 35-90s vertical 3D explainer YouTube Shorts, one in English and one in Tamil, each with its own voiceover and burned-in word-synced captions (plus SRTs). It researches the topic, writes a curiosity-loop script, transcreates it into spoken Tamil, generates 3D keyframes, writes a free image-to-video prompt pack, and renders and QA-checks both videos. Use when the user gives a short idea, question or topic and wants a Short, Reel or 3D explainer video made from it, says "make a short about …", or asks to continue an existing short project.
+description: Turn a one-line idea into two production-ready 35-90s vertical 3D explainer YouTube Shorts, one in English and one in Tamil, each with its own voiceover and burned-in word-synced captions (plus SRTs). It researches the topic, writes a curiosity-loop script, transcreates it into spoken Tamil, generates 3D keyframes, writes a free image-to-video prompt pack, and renders and QA-checks both videos. Use when the user gives a short idea, question or topic and wants a Short, Reel or 3D explainer video made from it, says "make a short about …", or asks to continue an existing short project. Also plans long-form videos (4-12 min, 16:9, chapters): use it when the user asks for a long video, a full-length or 10-minute video, a documentary or a video essay.
 ---
 
 # Bilingual 3D Explainer Shorts (EN + TA)
@@ -9,7 +9,7 @@ One line in, two finished 9:16 Shorts (35-90 s, **hard cap 90 s**) out: `final/<
 The look follows `YT_VIDEOS/References/`: realistic game-engine 3D, teal/cyan grade, an always-moving camera, 2-3s shots,
 whip/zoom transitions, glowing number/icon overlays, and 2-3 word white captions.
 **Budget is $0.** Shots come from three visual sources: code-built 3D (Claude), the **faceless-shorts** engines (Claude, in code)
-and Nano Banana (you make the stills in the Gemini app / AI Studio, free, from a prompt sheet), the ElevenLabs free tier does the voices, hero clips come from free web tools
+and Nano Banana (you make the stills in the Gemini app / AI Studio, free, from a prompt sheet), the voices come from the ElevenLabs free tier or the free Microsoft Edge voices (`config.json → voice.provider`; references/voice-and-captions.md §Providers), hero clips come from free web tools
 (added by the user by hand), and Remotion renders.
 
 Paths: `SK=YT_VIDEOS/.claude/skills/bilingual-3d-shorts`, scripts in `$SK/scripts` (run them with `python3`, cwd = scripts),
@@ -23,14 +23,18 @@ projects in `YT_VIDEOS/projects/<slug>/`. Read these when you reach the step tha
 - `/bilingual-3d-shorts continue <slug>` resumes. Run `python3 project.py status <slug>` and continue from the first incomplete stage
   (`faceless_renders_missing` lists faceless shots that still need `faceless.py --export`).
   If every stage is done but `projects/<slug>/retro.md` is missing, run Stage 9.
+- `/bilingual-3d-shorts long <idea> [minutes]` (or any request for a video over ~3 min) starts a **long-form** project: see
+  "Long-form mode" below. `continue <slug>` on a project with `outline.json` resumes there too.
 - `/bilingual-3d-shorts doctor` runs `python3 doctor.py --tamil`, then view `$SK/qa_tamil_test.png` and check the Tamil shaping.
 
 ## Stage 0: Preflight (each new project)
-Run `python3 doctor.py`. If disk, Remotion, the ElevenLabs key or the SFX kit FAILs, stop and tell the user the exact fix.
+Run `python3 doctor.py`. If disk, Remotion, the voice provider in use (the ElevenLabs key or edge-tts) or the SFX kit FAILs, stop and tell the user the exact fix.
 Never print or echo the contents of `.env`.
 **Audio assets** (`assets/DOWNLOADS.md` says what the user downloads and where):
 - If `assets/sfx/incoming/` has files named like the kit (`whoosh`, `whoosh2`, `pop`, `riser`, `impact`, `ding`), convert each one:
   `ffmpeg -y -i assets/sfx/incoming/<name>.<ext> -ac 2 -ar 48000 assets/sfx/<name>.wav`, then delete the incoming file.
+- If `assets/luts/*.cube`, `assets/sfx/ambience/` or `assets/music/stingers/` are missing, run `python3 make_luts.py` and
+  `python3 sfx.py` (both free, no downloads; sfx.py only fills gaps).
 - If `assets/music/<mood>/` folders are all empty, tell the user once: "no music yet, the video will be voice + SFX only;
   see assets/DOWNLOADS.md". Don't block.
 Then read `references/learnings.md` and apply every lesson that fits this project (prompt fixes, pacing, visual-source choices,
@@ -80,6 +84,12 @@ Keep code3d + faceless within the ~90 min build budget. If code3d or faceless sh
 - `cast` when any shot is faceless: `{"hero": {"skin", "shirt", "pants", "shoes", "hair", "iris"}}`, the same person in every shot.
 - `music_mood`, and on one shot per mechanism beat `"sfx": [{"name": "crack", "trigger": {"en": "…", "ta": "…"}}]`.
   The name is a file in `assets/sfx/foley/` (assets/DOWNLOADS.md); the sound lands on the trigger word.
+  Layer 2-3 sounds in each mechanism beat (style-guide §Sound design: ≥ 3 deliberate sounds per 10 s).
+- `ambience` (room-tone bed, top level or per beat when the set changes) and, when the story turns, `music_cues`
+  (switch mood / stinger on the payoff; the drop before the twist is automatic). script-playbook §4.
+- **Numbers on screen:** every number the narration states gets an infographic overlay (`counter`, `gauge`, `compare`,
+  `scale`; `pin` to point at a part of a code-rendered 3D object). style-guide §Overlays.
+- Code-rendered hero events: `event_sec`, and on 1-2 of them `ramp` (slow motion) or `focus_pull` (rack focus).
 Then run `python3 project.py validate <slug>`. Fix every error and re-run until `ok: true`. Resolve warnings unless there is a reason not to;
 the hook (§2c) and flow (§2d) warnings always get fixed, since they are what makes viewers scroll away or hear a choppy voice.
 
@@ -89,7 +99,8 @@ Show the user:
 - the **explanation spine** (question, one-sentence answer, chain, analogy, defined terms; it heads `script_en.txt`)
 - both scripts beat by beat (from `script_en.txt` and `script_ta.txt`), after passing the §2d read-aloud test
 - the estimated seconds per language (≤ 90) and where the re-hooks land
-- how many characters the voices will use, against the ElevenLabs credits left (`python3 voice.py credits`)
+- the voice provider per language and how many characters the voices will use: against the ElevenLabs credits left
+  (`python3 voice.py credits`); the edge voice has no limit
 - 2-3 key sources
 - the `music_mood`, and which track it will use (or that the folder is empty)
 - the **visual plan**: mode, which shots are code-built 3D, which are faceless-shorts (and which style), and which you make in Nano Banana (with counts), and the one-line reason
@@ -106,10 +117,23 @@ Ask for approval or edits. **Do not spend credits before approval.**
    "faceless-shorts engine ... ready", using Remotion's Chrome for Testing when Chrome isn't installed).
 2. `python3 faceless.py <slug>` copies the style's example engine to `projects/<slug>/faceless/` and gives every faceless shot a silent,
    caption-free 5 s slot. It prints the slot list (`L(k) = Sxx: scene`) and writes `faceless/slots.json`.
+   **Time the shots to the real cut first:** run Stage 5 (voices) now, then run `timeline.py` on a scratchpad copy of the project
+   (beats.json, audio, brand, plus placeholder `keyframes/Sxx.png`) and read each shot's real length (often 1.1-4.4 s, not 5 s)
+   and where its trigger words land. Every clip plays from its frame 0 at the shot's start, so the key action must happen
+   within the shot's real length. Triggers often land in the neighbouring shot (shots split a beat evenly), so make events
+   continuous (repeated taps, staggered pops, a draw-on that runs most of the shot) rather than a single hit.
 3. Rewrite `faceless/src/shots.js`: one shot per slot, `add({ id: 'Sxx', at: L(k), draw(lt, d, t, blit) {...} })`, reusing the style's
    kit (sets, `Human`, x-ray, look2d), with `new Human(CAST.hero)` from `./cast.js` and a facial reaction (`brow`, `mouth`) in every
    real-world shot of the hero. Follow the shot's `scene` and `camera_move`, and keep the camera moving. Don't use `Wd()` (no words here),
    and don't draw captions or text pills over the lower third: Remotion adds captions and overlays.
+   **Safe zone for the first shot:** keep its subject between y ≈ 700 and y ≈ 1250 of the 1920-px clip. The hook title band
+   (around 22% height) plus Remotion's own ~10% push-in hide anything higher, and captions sit at 70%.
+   **Film and motion (core/film.js, core/motion.js; style-guide §Camera language and motion):** move the camera with
+   `dolly` / `orbitAround` / `craneReveal` / `scaleJump` (+ `handheld`); give every key action `anticip` → move →
+   `overshoot`/`spring`, one follow-through element (`follow`) and `squash` on impacts; read the shot's fx with
+   `fx('Sxx')` and apply `lt = ramp(lt, fx('Sxx').ramp)` and `focus: focusPull(lt, fx('Sxx').focus_pull, <default>)`;
+   for a `pin` overlay call `pin('<id>', vec3)` right after `E.render`. `faceless.py` writes `look.json` (the grade's LUT,
+   halation, CA) so the clips come out already graded; an older `faceless/` copy prints how to upgrade it.
 4. `python3 faceless.py <slug> --check` (must print CHECK OK). Iterate on single frames with
    `node tools/capture.mjs frames review/f "<t>"` inside `faceless/`, and look at them.
 5. `python3 faceless.py <slug> --export --mb 4` renders every faceless shot to `clips/Sxx.mp4` (5 s, 1080x1920, 30 fps) + `keyframes/Sxx.png`,
@@ -141,7 +165,9 @@ Do not wait idle. If the user says skip, or wants a preview first, go straight o
 Clips can be added later and only Stages 6-7 need re-running.
 
 ## Stage 5: Voices
-`python3 voice.py render <slug>` renders both languages, checking credits first.
+`python3 voice.py render <slug>` renders both languages with the configured provider (`--provider edge|elevenlabs`
+for one run), checking ElevenLabs credits first. If ElevenLabs runs out, offer the free edge voice
+(audition first: `voice.py sample "<line>" --lang ta --provider edge --out /tmp/x.mp3`).
 - If a language comes back `in_range: false` and is too long even after the automatic atempo: shorten that language's narration in
   beats.json, re-validate, and re-render only that language with `--lang ta --force`. Tell the user that this spends credits.
 - If it is too short (<40s), add one concrete fact line to a mechanism beat and re-render that language.
@@ -159,7 +185,11 @@ Clips can be added later and only Stages 6-7 need re-running.
    Every video ends with the **channel end card** (`config.json → end_card`, ~2.5s after the last word): that language's channel
    logo (`YT_VIDEOS/brand/icon_en.png` → How is this, `brand/icon_ta.png` → How is this - Tamil), the channel name and an animated
    "Subscribe" button. It is visual only (no extra voice credits) and its length is already in the duration budget. Never skip it.
-3. `python3 render.py <slug>` renders both languages at 1080x1920, normalizes loudness, and writes the SRTs and thumbnails. It takes a few minutes per language on an M4.
+3. **Deep Polish (Stage 6b, required):** `python3 render.py <slug> --preview`, then `python3 polish.py <slug>`. Read
+   `qa/polish_<lang>.md` and view `qa/polish_sheet_<lang>.jpg` (before/after every cut). Fix every HIGH and the real MED
+   items (static or washed-out shots: re-export with `faceless.py --export --only Sxx`; thin sound: add foley / ambience;
+   a number with nothing on screen: add an infographic), re-run timeline.py, and repeat once. Say at Gate 4 what was left and why.
+4. `python3 render.py <slug>` renders both languages at 1080x1920, normalizes loudness, and writes the SRTs and thumbnails. It takes a few minutes per language on an M4.
 
 ## Stage 7: QA and delivery
 1. Run `python3 qa.py <slug>` (it also FAILs if the channel end card is missing). Fix any FAIL (re-run the relevant stage) before delivering.
@@ -170,7 +200,7 @@ Clips can be added later and only Stages 6-7 need re-running.
    shot 1 or `hook_text` before delivering. qa.py FAILs if the spoken hook ends after 4 s or the hook title is missing at frame 0.
    Also listen once end to end for **flow**: the voice never stalls, every beat follows from the one before.
 3. Run Stage 8 below before Gate 4. It replaces the old hand-written `metadata_<lang>.md`.
-4. **GATE 4.** Show the final paths (videos, SRTs, `thumbnail_<lang>.jpg` (9:16) and `thumbnail_<lang>_16x9.jpg` (16:9), `publish_<lang>.md`), the chosen titles, QA results, a one-line summary of anything you could not verify, and the remaining ElevenLabs credits.
+4. **GATE 4.** Show the final paths (videos, SRTs, `thumbnail_<lang>.jpg` (9:16) and `thumbnail_<lang>_16x9.jpg` (16:9), `publish_<lang>.md`), the chosen titles, QA results, a one-line summary of anything you could not verify, and the remaining ElevenLabs credits when ElevenLabs was used.
    Also ask: "Anything you'd want done differently next time?" (optional, feeds Stage 9).
    Never upload or publish anything. The user publishes.
 
@@ -202,6 +232,51 @@ This makes every Short better than the last one. Do it even when the project wen
    cause (slow shot, weak line, late picture change) and add the lesson to `references/learnings.md`.
 6. **Report** to the user in 3-6 lines: the lessons added or refined, any rule promoted (file and section), and any code changes proposed.
 
+## Long-form mode (4-12 min videos)
+For a long video, read `references/long-form-playbook.md` in full first. It has the teardown of the reference video, the
+research, the structure template and the `outline.json` format. A long video is **planned before it is scripted**: chapters, time
+budget, open loops, re-hooks, recurring cast and sets, and the voice-credit budget are agreed at Gate L, then `beats.json` is
+written chapter by chapter. Limits come from `config.json → long_form` (applied by `fmt_cfg` whenever `"format": "long"`).
+Stage 0 (preflight, learnings) is the same.
+
+**L1. Research (deeper than a Short).** `python3 project.py init "<idea>" --long --minutes <4-12>` (default 9) writes `outline.json`, a
+skeleton whose chapter seconds already add up to the target. Research per script-playbook §1, but aim for **15-25 sourced facts**,
+a dated **timeline of events**, the **people** (role, want, obstacle), the **turns** (each "but / therefore"), 3-6 **numbers to make
+concrete** (per person, in everyday objects) and an **everyday analogy for each hard idea**. Write `research.md` with sources.
+Pick the length the story needs. Never pad to reach 8:00 for mid-roll.
+
+**L2. Outline → `outline.json`** (playbook §3, §7): the cold open (most dramatic moment, stakes, dramatic irony, the central question),
+3-7 chapters (2-5 word card title, goal, but/therefore turn, analogy, re-hooks, numbers, skits, sets, cliffhanger, est_sec),
+the midpoint twist (35-70 %), open loops (each closed in a later chapter), the ending (resolution, what it means for the viewer,
+callback to the cold-open image, final line), the recurring cast/sets/motifs, the visual plan (playbook §4, usually faceless
+`tall-tale` + `paper-atlas` maps + a few nano heroes) and 2-3 Shorts cut-downs.
+Run `python3 project.py plan <slug>` until `ok: true`. It writes `plan.md`: chapter map, re-hook map, estimated YouTube chapters,
+mid-roll break points (8:00+), the production budget (words, shots, sets, voice characters per language), and the warnings.
+
+### GATE L: outline approval (stop and wait)
+Show `plan.md`: the working title and promise, the cold open, the chapter map with each turn and cliffhanger, the midpoint twist,
+the ending callback, the re-hook gaps, the visual plan and the **budget**. The budget names the voice provider per language. With ElevenLabs it
+must show the characters against the free month and the 10,000-per-request cap; if over, offer the edge voice (free, no
+length limit, one take of 10+ min tested) or a shorter cut.
+Ask for approval or edits. Write no `beats.json` and spend no credits before approval.
+
+**L3. Script → `beats.json`** (playbook §8) with `"format": "long"`. Every beat has `"chapter"`, and the first beat of each chapter
+has a `chapter_card` {en, ta}. Write it **one chapter at a time** against the outline: the cold open's first line is the hook
+beat (≤ 18 words, ≤ 6 s), every chapter opens on its card and ends on its cliffhanger, and there is a re-hook every ≤ 75-90 s.
+All Short rules apply (§2b explanation, §2c no warm-up, §2d flow, numbers on screen, the Tamil transcreation).
+`python3 project.py validate <slug>` also checks the beats against the outline (order, chapter cards, ±35 % of each chapter's
+seconds, the character caps). Then **Gate 1** as usual, showing the script chapter by chapter.
+
+**After Gate 1.** Stages 3-7 run the same way with the long-form limits (shots up to 6 s; voice, timeline and QA duration 4-12 min).
+After the voices, re-run `project.py plan <slug>`: it writes `final/chapters_<lang>.txt` from the real audio, for the video description.
+Stage 9 also records long-form lessons in learnings.md under their own heading.
+
+**Not built yet (propose these as code changes before a long video reaches Stage 3; don't improvise them):**
+- a 16:9 render path. Remotion's composition, captions and overlays, `keyframes.py` (9:16 crop) and the faceless 5 s 1080x1920
+  slots are all portrait today, and `qa.py` checks `video.width/height`.
+- chapter cards, black text cards and date/place tags drawn by `timeline.py`. Today `chapter_card` is only printed in `script_<lang>.txt`.
+- a long-form publish kit (16:9 thumbnail, chapters in the description).
+
 ## Hard rules
 - Requests for a Short in this workspace go through this pipeline (EN + TA). The faceless-shorts skill is used only as the
   `faceless` visual source, never as a separate end-to-end path, unless the user asks for a standalone faceless-shorts video.
@@ -209,4 +284,6 @@ This makes every Short better than the last one. Do it even when the project wen
 - No real people's likenesses, celebrities, logos, brand names, or another creator's name or branding, in prompts, titles or metadata.
 - Facts must trace to research.md sources. Medical and safety topics are explanatory only.
 - Free-tier ElevenLabs output is non-commercial and needs attribution. Remind the user at Gate 4 if they mention monetizing.
+  The edge voice is an unofficial route with unclear commercial terms. No provider that needs a billing account (the user
+  can't have one; Google Cloud TTS was dropped for that).
 - Keep `.env` secret. Never paste keys into chat, logs or URLs.

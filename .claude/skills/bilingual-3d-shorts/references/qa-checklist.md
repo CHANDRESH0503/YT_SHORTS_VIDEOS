@@ -11,6 +11,12 @@ Automated (`qa.py`, must all PASS):
 - WARN (fix if you can): first picture change after 2.0s · hook ends after 3 s · narration stalls (pauses > 0.7 s) · music not ducked · >25% of frames soft (blurdetect; threshold
   `video.soft_blur`, a starting guess: calibrate it on the first real Short) · info lines show grade and foley count
 
+Deep Polish (`polish.py`, Stage 6b, on the preview render; all WARN, thresholds in `config.polish`):
+- fix every **HIGH** (nearly static shot) and the MED items that are real: washed-out or murky shots, a stretch under
+  3 sounds per 10 s, a beat with no sound moment, a number said with nothing on screen
+- LOW items (colour outliers that are deliberate set changes, a cut inside a word) only if they are cheap
+- look at `qa/polish_sheet_<lang>.jpg`: every cut as before/after; consecutive pairs should change scale, side or subject
+
 Visual review (Claude views `qa/contact_en.jpg`, `qa/contact_ta.jpg`, `qa/reference_sheet.jpg`):
 - [ ] First frame is striking and readable as a thumbnail
 - [ ] **Muted 3-second test:** watch only 0-3s with the sound off. The picture plus the hook title alone make you curious, and
@@ -20,7 +26,8 @@ Visual review (Claude views `qa/contact_en.jpg`, `qa/contact_ta.jpg`, `qa/refere
 - [ ] Grade/palette feels like the references (teal/cyan, glossy, not muddy or oversaturated)
 - [ ] No AI artefacts that read as errors (melted hands, garbled text in image, extra limbs) – regenerate those keyframes
 - [ ] Caption size consistent; Tamil glyphs fully shaped (no dotted circles ◌, no broken vowel signs)
-- [ ] Overlays land on the right words and don't cover faces/captions
+- [ ] Overlays land on the right words and don't cover faces/captions; counters/gauges finish running before the next callout; a `pin` stays on its object
+- [ ] Music drops out before the twist and comes back on it; the stinger hits the payoff word; the ambience changes with the set
 - [ ] Last frames show the **right channel's** logo + name (EN → How is this, TA → How is this - Tamil) and the Subscribe button; Tamil CTA glyphs intact
 - [ ] Recurring character looks like the same character across shots
 

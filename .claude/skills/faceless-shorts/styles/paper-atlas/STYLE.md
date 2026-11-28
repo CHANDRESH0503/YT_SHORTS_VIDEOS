@@ -28,3 +28,8 @@ Example: `example/` = **HOW ONE BAKERY BURNED DOWN LONDON** (1666; 41 s, 10 shot
 ## 3. QA pitfalls we've hit
 - Timeline or labels colliding with the caption strip → keep them above y 1450.
 - Map labels unreadable under coloured marks → put them on a `slip`.
+
+## Motion polish (core/motion.js)
+Pure easing helpers shared with the 3D styles: `anticip`, `overshoot`, `spring`, `follow`, `squash` (→ `{y, xz}`), `stagger`,
+`ramp`. Every key action = anticipation → move → overshoot settle; one follow-through element per moving hero part
+(hair, tail, cape, shadow); stagger groups so one thing moves at a time.

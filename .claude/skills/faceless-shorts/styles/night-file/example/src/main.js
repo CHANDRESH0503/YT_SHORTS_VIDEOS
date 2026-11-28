@@ -5,6 +5,7 @@ import { W, H, setCtx, ctx, clamp } from './core/lib.js';
 import { T, loadTiming } from './core/timing.js';
 import { buildCaptions, drawCaption, captionList } from './core/captions.js';
 import { makeEngine, RES, AA } from './core/engine.js';
+import { FILM, loadFilm } from './core/film.js';
 import { buildShots } from './shots.js';
 
 const cv = document.getElementById('cv'), GL = document.getElementById('gl');
@@ -12,7 +13,7 @@ setCtx(cv.getContext('2d'));
 const OP = (window.OP = { ready: false });
 
 function draw(t) {
-  t = clamp(t, 0, T.dur - 1e-4);
+  t = clamp(t, 0, T.dur - 1e-4); FILM.t = t;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.letterSpacing = '0px';
   const S = OP._shots; let i = S.length - 1; while (i > 0 && S[i].at > t) i--;
   const sh = S[i], end = i < S.length - 1 ? S[i + 1].at : T.dur, d = end - sh.at, lt = t - sh.at;
@@ -30,6 +31,7 @@ function draw(t) {
     const script = await (await fetch('script.json', { cache: 'no-store' })).json();
     await loadTiming();
     buildCaptions(script);
+    await loadFilm();   // look.json + slots.json (optional; written by the bilingual pipeline)
     GL.width = Math.round(1080 * RES); GL.height = Math.round(1920 * RES);
     const E = makeEngine(GL, { w: GL.width, h: GL.height, samples: AA });
     const { shots, cues } = buildShots(E);
@@ -41,6 +43,7 @@ function draw(t) {
     OP.shots = () => shots.map((s, i) => ({ id: s.id, at: +s.at.toFixed(3), end: +(i < shots.length - 1 ? shots[i + 1].at : T.dur).toFixed(3), note: s.note || '' }));
     OP.captions = () => captionList().map((c) => ({ s: +c.s.toFixed(3), e: +c.e.toFixed(3), text: c.words.map((w) => (w.hi ? '*' : '') + w.txt).join(' ') }));
     OP.cues = () => cues.slice().sort((a, b) => a.t - b.t);
+    OP.pins = () => FILM.pinLog; OP.clearPins = () => { FILM.pinLog.length = 0; return true; };
     OP.ready = true;
     const q = new URLSearchParams(location.search);
     if (!q.has('capture')) {

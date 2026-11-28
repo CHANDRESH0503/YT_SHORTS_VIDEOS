@@ -2,9 +2,15 @@ import React from 'react';
 import {AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
 import type {Overlay as OverlayT, Timeline} from '../types';
 import {SevenSeg} from './SevenSeg';
+import {Infographic} from './Infographic';
+
+const INFO = new Set(['counter', 'gauge', 'compare', 'scale', 'pin']);
 
 // Glowing floating callout (number / icon / label) that pops on a keyword, like the reference videos.
-export const OverlayCallout: React.FC<{ov: OverlayT; style: Timeline['overlayStyle']; fontFamily: string}> = ({ov, style, fontFamily}) => {
+export const OverlayCallout: React.FC<{ov: OverlayT; style: Timeline['overlayStyle']; fontFamily: string; accent?: string}> = (props) =>
+	INFO.has(props.ov.kind) ? <Infographic ov={props.ov} style={props.style} fontFamily={props.fontFamily} /> : <Callout {...props} />;
+
+const Callout: React.FC<{ov: OverlayT; style: Timeline['overlayStyle']; fontFamily: string}> = ({ov, style, fontFamily}) => {
 	const f = useCurrentFrame();
 	const {fps, height} = useVideoConfig();
 	const s = spring({frame: f, fps, config: {damping: 10, stiffness: 180, mass: 0.7}});

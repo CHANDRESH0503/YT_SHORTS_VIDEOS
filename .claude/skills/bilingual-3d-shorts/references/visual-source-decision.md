@@ -71,6 +71,7 @@ If the estimate is over budget, move the lowest-scoring code3d shots to `nano`.
 | What happens if you hold your breath / crack your knuckles, how the heart pumps | **faceless** `deep-dive` (x-ray body + inside the body), code3d only for a precise diagram |
 | An unsolved mystery, a famous disappearance | **faceless** `night-file` |
 | How the Great Fire of London spread, a trade route, a historical event | **faceless** `paper-atlas` |
+| A place's history across eras (a temple hill, a city, a disputed site) | **faceless** `paper-atlas`: build one project set of the place (reused in most shots) + a map + document props; no manual stills needed |
 | A funny true story, a clever loophole | **faceless** `tall-tale` |
 | Crows counting, forensic fingerprints, food, wildlife, real landscapes | **nano** (photoreal), with code3d only for a diagram or counting insert |
 | How noise-cancelling headphones work | **hybrid**: a person wearing them (nano) + wave cancellation (code3d) |

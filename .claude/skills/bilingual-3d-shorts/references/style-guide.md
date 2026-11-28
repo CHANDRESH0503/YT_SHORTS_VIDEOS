@@ -34,4 +34,34 @@ Macro shots: `orbit_*` or `push_in`. Payoff: `pull_out` (ends wide, satisfying).
 - `number`: chrome digits with cyan glow (counts, percentages, years: "3", "90%", "1912").
 - `icon`: a single glyph: ✓ ✗ ⚡ 🚫 ⚠️ ❓ ❤️ 🔥 💧 – max 1 per 2 beats.
 - `label`: short word/phrase pill, **per language** (`{"en": "Blank!", "ta": "காலி!"}`), ≤ 14 chars.
-- 4-7 overlays per video. Trigger word must appear in that beat's narration in each language.
+- 4-8 overlays per video. Trigger word must appear in that beat's narration in each language.
+- **Infographics** (`counter`, `gauge`, `compare`, `scale`, `pin`; Infographic.tsx): every number the narration states is
+  shown moving (at least 2 when the script has numbers). They spring in with overshoot, run their value over the first
+  ~55% (ticks play under it), settle with a small bump, fade out. One accent colour per video (`visual_plan.accent`, else the
+  grade's: teal/night #7DF9FF, warm-sunlit/neutral #FFD43B) on dark glass panels; white for everything else. `pin` follows a
+  3D point from the clip (film.js `pin()`), keeps its label above the caption zone.
+
+## Sound design (the other half of the picture)
+Target **≥ 3 deliberate sounds per 10 s** besides the voice (polish.py measures it; reference studios run ~3 per shot):
+- automatic: whoosh on whips/zooms, riser + impact + **sub drop** on flash cuts, **ticks** under counters/gauges, pop on callouts, ding at the end
+- per shot (`sfx`): 2-3 layered foley per mechanism beat on the action (the hit, a texture, a tail), `offset_ms` to pre-empt hits
+- an **ambience bed** (room tone) under every set, changed when the set changes: silence between words sounds empty, room tone sounds real
+- **music scored to the story**: the bed drops out just before the twist line and slams back on it; a mood `switch` when the
+  story turns; a **stinger** on the payoff word. One loop all the way through sounds like a template.
+
+## Film look (code-rendered shots)
+The 3D engines finish every frame like film (core/film.js, `look.json` from `config.grade_presets.<grade>.engine`):
+ACES tone curve → the grade's **3D LUT** (`assets/luts`, `make_luts.py`: split-tone + gentle S-curve) → **halation** (warm
+glow off bright edges) → light **edge chromatic aberration**. ACES + LUT beat AgX on our sets (AgX came out flat and muddy);
+opt into AgX per video with `visual_plan.film: {"tonemap": "agx"}`. Remotion's tint is scaled down when every shot was graded in-engine.
+
+## Camera language and motion (code-rendered shots)
+- Camera moves come from core/film.js: `dolly` (walk through the set on a smooth path), `orbitAround`, `craneReveal`
+  (low/close → high/wide, for payoffs), `scaleJump` (macro ↔ wide in one move, constant felt speed), `handheld` (subtle noise on top).
+- **Rack focus** on the key word (`focus_pull`) and **speed ramps** (`ramp`, ~3x slow motion for ~0.6 s) on hero events.
+- Animation principles (core/motion.js): every key action = `anticip` → move → `overshoot`/`spring` settle; every hero moving
+  part has one follow-through element (`follow`: tails, hair, cables, splashes, shadows lag); `squash` on impacts;
+  `stagger` groups so one thing moves at a time (one focal motion per shot).
+- **2D styles (paper-atlas, inside-out, stick-story):** move the camera linearly for the whole shot (not ease-in-out), with at least a
+  0.3 scale change or ~150 px of travel on 3-4 s shots, plus parallax layers or a slow rotation. Flat paper gives far less
+  frame-to-frame energy than 3D, so an eased move that settles halfway makes polish.py flag the rest of the shot as static.

@@ -22,6 +22,7 @@
   },
   "voice": {
     "provider": "elevenlabs",
+    "provider_note": "elevenlabs | edge (references/voice-and-captions.md §Providers); voice.<lang>.provider overrides one language, voice.py --provider overrides one run",
     "model_id": "eleven_multilingual_v2",
     "output_format": "mp3_44100_128",
     "max_atempo": 1.06,
@@ -35,7 +36,7 @@
         "use_speaker_boost": true,
         "speed": 1.04
       },
-      "chars_per_sec": 15.16
+      "chars_per_sec": 15.85
     },
     "ta": {
       "voice_id": "JBFqnCBsd6RMkjVDRZzb",
@@ -47,7 +48,20 @@
         "use_speaker_boost": true,
         "speed": 1.02
       },
-      "chars_per_sec": 14.87
+      "chars_per_sec": 14.94
+    },
+    "edge": {
+      "note": "Microsoft Edge online voices (edge-tts). The *Multilingual* voices return no audio (2026-11-28); audition with voice.py sample --provider edge",
+      "en": {
+        "voice": "en-US-AndrewNeural",
+        "rate": "+0%",
+        "pitch": "+0Hz"
+      },
+      "ta": {
+        "voice": "ta-IN-ValluvarNeural",
+        "rate": "+0%",
+        "pitch": "+0Hz"
+      }
     }
   },
   "image": {
@@ -111,11 +125,21 @@
       "riser": 0.35,
       "impact": 0.7,
       "ding": 0.4,
-      "foley": 0.6
+      "foley": 0.6,
+      "tick": 0.3,
+      "subdrop": 0.5,
+      "ambience": 0.35,
+      "stinger": 0.5
     },
     "target_lufs": -14,
     "true_peak": -1.0,
-    "music_duck": 0.45
+    "music_duck": 0.45,
+    "ambience_duck": 0.6,
+    "music_cues": {
+      "auto_drop": true,
+      "drop_sec": 0.6,
+      "note": "beats.music_cues [{at_beat, mode: switch|drop|stinger, mood|file, trigger {en,ta}}]; without it the bed drops out before the first twist line"
+    }
   },
   "end_card": {
     "enabled": true,
@@ -145,7 +169,16 @@
       "contrast": 1.08,
       "saturate": 1.12,
       "brightness": 1.02,
-      "grain": 0.05
+      "grain": 0.05,
+      "engine": {
+        "tonemap": "aces",
+        "lut": "luts/teal.cube",
+        "lut_mix": 0.9,
+        "halation": 0.25,
+        "ca": 1.0
+      },
+      "in_engine_tint_scale": 0.4,
+      "accent": "#7DF9FF"
     },
     "warm-sunlit": {
       "tint": "#FFB066",
@@ -154,7 +187,16 @@
       "contrast": 1.06,
       "saturate": 1.16,
       "brightness": 1.03,
-      "grain": 0.04
+      "grain": 0.04,
+      "engine": {
+        "tonemap": "aces",
+        "lut": "luts/warm-sunlit.cube",
+        "lut_mix": 0.9,
+        "halation": 0.35,
+        "ca": 0.8
+      },
+      "in_engine_tint_scale": 0.4,
+      "accent": "#FFD43B"
     },
     "night": {
       "tint": "#2A4BFF",
@@ -163,7 +205,16 @@
       "contrast": 1.12,
       "saturate": 0.9,
       "brightness": 0.96,
-      "grain": 0.07
+      "grain": 0.07,
+      "engine": {
+        "tonemap": "aces",
+        "lut": "luts/night.cube",
+        "lut_mix": 1.0,
+        "halation": 0.45,
+        "ca": 1.2
+      },
+      "in_engine_tint_scale": 0.4,
+      "accent": "#7DF9FF"
     },
     "neutral": {
       "tint": "#FFFFFF",
@@ -172,7 +223,16 @@
       "contrast": 1.05,
       "saturate": 1.08,
       "brightness": 1.02,
-      "grain": 0.03
+      "grain": 0.03,
+      "engine": {
+        "tonemap": "neutral",
+        "lut": "luts/neutral.cube",
+        "lut_mix": 0.7,
+        "halation": 0.0,
+        "ca": 0.0
+      },
+      "in_engine_tint_scale": 0.4,
+      "accent": "#FFD43B"
     }
   },
   "grade_by_style": {
@@ -214,5 +274,102 @@
     "duck_ramp_frames": 9,
     "whoosh_under_voice": 0.45,
     "min_sentence_words": 4
+  },
+  "grade_presets_note": "engine = the in-engine film look for code-rendered 3D (faceless deep-dive/night-file/tall-tale): tone map, LUT (assets/luts, make_luts.py), lut_mix, halation 0..1, ca px. faceless.py writes it to faceless/look.json. Remotion's tint is scaled by in_engine_tint_scale when every shot is code-rendered. Tone map: ACES + LUT tested best on deep-dive sets (2026-11-28); AgX came out flat and muddy, so use it only per video via visual_plan.film {\"tonemap\": \"agx\"} for scenes with blown saturated lights.",
+  "polish": {
+    "static_energy": 0.8,
+    "monotony_ratio": 0.2,
+    "luma_dev": 0.4,
+    "chroma_dev": 30.0,
+    "chroma_outlier_x": 2.5,
+    "min_sfx_per_10s": 3,
+    "cut_word_margin": 3,
+    "edge_frames": 6,
+    "note": "polish.py (Stage 6b) thresholds, all WARN-level; calibrated on one Short (2026-11-28) - refine at Stage 9"
+  },
+  "long_form": {
+    "note": "Long-form mode (references/long-form-playbook.md): one 4-12 min landscape video per language, planned in outline.json (project.py plan) before beats.json. Values here override the Short limits when beats.json has \"format\": \"long\".",
+    "duration": {
+      "min": 240,
+      "max": 720,
+      "target": 540,
+      "note": "4-12 min including the end card; pick the length the story needs (most land 8-10 min); 8:00+ unlocks mid-roll ads"
+    },
+    "aspect": "16:9",
+    "wpm": {
+      "en": 150,
+      "ta": 135,
+      "note": "planning pace; the measured chars_per_sec in voice.<lang> wins once audio exists"
+    },
+    "words": {
+      "en": {
+        "min": 560,
+        "max": 1800
+      }
+    },
+    "cold_open_sec": {
+      "min": 20,
+      "max": 60
+    },
+    "chapter_sec": {
+      "min": 45,
+      "max": 180
+    },
+    "chapters_by_minutes": [
+      [
+        6,
+        3,
+        4
+      ],
+      [
+        9,
+        4,
+        6
+      ],
+      [
+        12,
+        5,
+        7
+      ]
+    ],
+    "chapter_title_max_words": 5,
+    "rehook_max_gap_sec": 90,
+    "midpoint_twist_pct": [
+      0.35,
+      0.7
+    ],
+    "avg_shot_sec": 3.0,
+    "max_shots_per_beat": 6,
+    "max_sets": 8,
+    "midroll_min_sec": 480,
+    "voice_free_chars_month": 10000,
+    "youtube_chapters": {
+      "min_count": 3,
+      "min_sec": 10
+    },
+    "overrides": {
+      "video": {
+        "max_shot_sec": 6.0
+      },
+      "words": {
+        "en": {
+          "min": 560,
+          "max": 1800
+        }
+      },
+      "hook": {
+        "max_words": 18,
+        "max_sec": 6.0,
+        "qa_max_sec": 7.0,
+        "rehook_every_sec": 75,
+        "text_required": false
+      },
+      "beats_range": [
+        12,
+        90
+      ],
+      "chain_max": 12,
+      "overlays_max": 40
+    }
   }
 }

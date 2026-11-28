@@ -4,6 +4,7 @@ import {ShortVideo} from './ShortVideo';
 import type {Timeline} from './types';
 import {Thumbnail, thumbDefaults} from './Thumbnail';
 import {ChannelBanner, ChannelIcon} from './brand/Brand';
+import {LongVideo, longDefaults} from './long/LongVideo';
 
 const baseStyle: Pick<Timeline, 'captionStyle' | 'overlayStyle' | 'grade'> = {
 	captionStyle: {
@@ -32,7 +33,7 @@ const emptyTimeline: Timeline = {
 	captions: [{from: 0, to: 60, text: 'Load a timeline', words: [{text: 'Load', from: 0, to: 20}, {text: 'a', from: 20, to: 30}, {text: 'timeline', from: 30, to: 60}]}],
 	overlays: [],
 	sfx: [],
-	music: null,
+	music: [],
 	...baseStyle,
 };
 
@@ -72,6 +73,16 @@ export const RemotionRoot: React.FC = () => (
 				width: props.width,
 				height: props.height,
 			})}
+		/>
+		<Composition
+			id="LongVideo"
+			component={LongVideo}
+			durationInFrames={longDefaults.durationInFrames}
+			fps={30}
+			width={1920}
+			height={1080}
+			defaultProps={longDefaults}
+			calculateMetadata={({props}) => ({durationInFrames: props.durationInFrames, fps: props.fps, width: props.width, height: props.height})}
 		/>
 		<Still id="TamilTest" component={ShortVideo} width={1080} height={1920} defaultProps={tamilTest} />
 		<Still id="Thumbnail" component={Thumbnail} width={1080} height={1920} defaultProps={thumbDefaults} />

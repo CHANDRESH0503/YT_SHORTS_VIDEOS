@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Project lifecycle: init, validate (beats.json), status.
+"""Project lifecycle: init, plan (long-form outline.json), validate (beats.json), status.
 
   python3 project.py init "<one line idea>" [--slug my-slug]
+  python3 project.py init "<one line idea>" --long [--minutes 9]   # 4-12 min long-form: also writes an outline.json skeleton
+  python3 project.py plan <slug>        # long-form: check outline.json, write plan.md (+ chapters_<lang>.txt once voices exist)
   python3 project.py validate <slug>
   python3 project.py status <slug>
 """
@@ -13,7 +15,8 @@ import json
 import re
 
 from common import (ASSETS_DIR, CAMERA_MOVES, CLIP_EXTS, CODE_SOURCES, IMG_EXTS, LANGS, ROLES, SOURCES, die, end_card_sec, find_file, iter_shots,
-                    faceless_styles, load_beats, load_config, narration_text, project_dir, projects_dir, slugify)
+                    faceless_styles, fmt_cfg, is_long, load_beats, load_config, narration_text, project_dir, projects_dir, slugify)
+from longform import check_long_beats, cmd_plan, outline_skeleton
 
 SUBDIRS = ["keyframes", "clips", "audio/en", "audio/ta", "sfx", "final", "qa"]
 
@@ -23,12 +26,18 @@ def cmd_init(a):
     p = projects_dir() / slug
     if p.exists():
         die(f"project already exists: {p}")
+    cfg = load_config()
+    if a.long and not cfg["long_form"]["duration"]["min"] <= a.minutes * 60 <= cfg["long_form"]["duration"]["max"]:
+        die(f"--minutes {a.minutes}: long-form runs {cfg['long_form']['duration']['min'] // 60}-{cfg['long_form']['duration']['max'] // 60} min")
     for d in SUBDIRS:
         (p / d).mkdir(parents=True, exist_ok=True)
+    out = ("English + Tamil 9:16 Shorts, 35-90s each (90 s hard cap)" if not a.long else
+           f"English + Tamil long-form videos, ~{a.minutes:g} min each (4-12 min, 16:9), planned in outline.json (references/long-form-playbook.md)")
     (p / "brief.md").write_text(
-        f"# Brief\n\n- **One-line idea:** {a.idea}\n- **Created:** {dt.date.today().isoformat()}\n"
-        f"- **Outputs:** English + Tamil 9:16 Shorts, 35-90s each (90 s hard cap)\n")
-    print(json.dumps({"slug": slug, "dir": str(p)}))
+        f"# Brief\n\n- **One-line idea:** {a.idea}\n- **Created:** {dt.date.today().isoformat()}\n- **Outputs:** {out}\n")
+    if a.long:
+        (p / "outline.json").write_text(json.dumps(outline_skeleton(a.idea, a.minutes, cfg), indent=2, ensure_ascii=False) + "\n")
+    print(json.dumps({"slug": slug, "dir": str(p), "format": "long" if a.long else "short"}))
 
 
 # Narrative-style checks (script-playbook §2b). Markers are loose on purpose: they catch a beat with no "why" at all.
@@ -47,8 +56,9 @@ def check_narrative(beats: dict, errs: list, warns: list) -> None:
         if not str(ex.get(k, "")).strip():
             errs.append(f"explainer.{k} empty")
     chain = ex.get("chain") or []
-    if not 3 <= len(chain) <= 7:
-        errs.append(f"explainer.chain has {len(chain)} steps (need 3-5 cause -> effect steps, up to 7 for a 70-90 s Short)")
+    cmax = 12 if is_long(beats) else 7
+    if not 3 <= len(chain) <= cmax:
+        errs.append(f"explainer.chain has {len(chain)} steps (need 3-5 cause -> effect steps, up to 7 for a 70-90 s Short, 12 for long-form)")
     if not isinstance(ex.get("terms"), list):
         errs.append("explainer.terms must be a list (empty only if the narration uses no technical words)")
     if len(str(ex.get("answer", "")).split()) > 25:
@@ -103,7 +113,7 @@ def check_hook(beats: dict, cfg: dict, errs: list, warns: list) -> None:
         n = len(line.split())
         sec = len(line) / cfg["voice"][lang]["chars_per_sec"]
         if lang == "en" and n > hc.get("max_words", 9) + 3:
-            errs.append(f"hook is {n} words - it must be <= {hc.get('max_words', 9)} so it lands inside the first 3 s")
+            errs.append(f"hook is {n} words - it must be <= {hc.get('max_words', 9)} so it lands inside the first {hc.get('max_sec', 3.0):g} s")
         elif lang == "en" and n > hc.get("max_words", 9):
             warns.append(f"hook is {n} words - aim <= {hc.get('max_words', 9)}")
         if sec > hc.get("max_sec", 3.0) + 0.6:
@@ -115,7 +125,9 @@ def check_hook(beats: dict, cfg: dict, errs: list, warns: list) -> None:
         if low.startswith(bad):
             errs.append(f"hook opens with '{bad}' - a warm-up phrase viewers scroll past; open on the claim or the question (§2c)")
     ht = beats.get("hook_text")
-    if not isinstance(ht, dict) or not all(str(ht.get(l, "")).strip() for l in LANGS):
+    if not ht and not hc.get("text_required", True):
+        pass  # long-form: the cold open has no on-screen hook title (a title sting follows it instead)
+    elif not isinstance(ht, dict) or not all(str(ht.get(l, "")).strip() for l in LANGS):
         errs.append("hook_text {en, ta} missing - the 3-6 word on-screen title shown from frame 0 for sound-off viewers (§2c)")
     else:
         for lang in LANGS:
@@ -175,6 +187,103 @@ def check_flow(beats: dict, cfg: dict, errs: list, warns: list) -> None:
         t += len(nar) / cps
 
 
+OVERLAY_KINDS = ("number", "icon", "label", "counter", "gauge", "compare", "scale", "pin")
+
+
+def check_overlay(s: dict, ov: dict, errs: list, warns: list) -> None:
+    """Fields per overlay kind (style-guide §Overlays). Infographics: counter / gauge / compare / scale / pin."""
+    k, sid = ov.get("kind"), s["id"]
+    if k not in OVERLAY_KINDS:
+        errs.append(f"{sid}: overlay.kind must be one of {OVERLAY_KINDS}")
+        return
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)  # noqa: E731
+    both = lambda v: isinstance(v, dict) and all(v.get(l) for l in LANGS)    # noqa: E731
+    if k == "counter" and not (num(ov.get("to")) and num(ov.get("from", 0))):
+        errs.append(f"{sid}: counter overlay needs numeric 'to' (and optional 'from', 'decimals', 'unit' {{en, ta}})")
+    if k == "gauge" and not (num(ov.get("value")) and num(ov.get("max", 100)) and ov.get("max", 100) > 0):
+        errs.append(f"{sid}: gauge overlay needs numeric 'value' and 'max' > 0")
+    if k == "compare":
+        items = ov.get("items") or []
+        if not 2 <= len(items) <= 3 or not all(num(i.get("value")) and both(i.get("label")) for i in items):
+            errs.append(f"{sid}: compare overlay needs 2-3 items [{{label: {{en, ta}}, value}}]")
+    if k in ("scale", "pin", "label") and not both(ov.get("text")):
+        errs.append(f"{sid}: {k} overlay needs text {{en, ta}}")
+    if k == "pin":
+        if not ov.get("pin"):
+            errs.append(f"{sid}: pin overlay needs 'pin' = the id passed to pin() in shots.js")
+        if s.get("source") not in ("faceless", "code3d"):
+            warns.append(f"{sid}: pin overlays track 3D points from code-rendered clips; a nano still has none (use 'at': [x, y] 0..1)")
+    for key in ("unit", "label", "prefix"):
+        if isinstance(ov.get(key), str) and k in ("counter", "gauge", "compare") and key != "prefix" and ov[key] and not ov[key].isascii():
+            warns.append(f"{sid}: overlay {key} looks language-specific - give it as {{en, ta}}")
+
+
+def check_fx(s: dict, errs: list) -> None:
+    """Shot film fx (core/film.js): event_sec, ramp {at_sec, slow, len_sec}, focus_pull {at_sec, from_m, to_m, len_sec}."""
+    for key in ("ramp", "focus_pull"):
+        v = s.get(key)
+        if v is None:
+            continue
+        if s.get("source") not in ("faceless", "code3d"):
+            errs.append(f"{s['id']}: {key} only works on code-rendered shots (faceless / code3d)")
+        if not isinstance(v, dict):
+            errs.append(f"{s['id']}: {key} must be an object")
+            continue
+        at = v.get("at_sec", s.get("event_sec"))
+        if at is not None and not 0.2 <= at <= 4.8:
+            errs.append(f"{s['id']}: {key}.at_sec {at} must be inside the 5 s slot (0.2-4.8)")
+    r = s.get("ramp") or {}
+    if r and not 0.1 <= r.get("slow", 0.35) <= 1:
+        errs.append(f"{s['id']}: ramp.slow must be 0.1-1 (0.35 = about 3x slow motion)")
+    fp = s.get("focus_pull") or {}
+    if fp and not (fp.get("from_m", 0) > 0 and fp.get("to_m", 0) > 0):
+        errs.append(f"{s['id']}: focus_pull needs from_m and to_m (metres, > 0)")
+
+
+def check_sound(beats: dict, cfg: dict, errs: list, warns: list) -> None:
+    """Sound design density (style-guide §Sound): layered foley per mechanism beat, ambience beds, music cues."""
+    bl = beats["beats"]
+    ids = {b["id"] for b in bl}
+    n_fx = 0
+    for b in bl:
+        k = sum(len(s.get("sfx") or []) for s in b.get("shots", []))
+        n_fx += k
+        if b.get("role") == "mechanism" and k == 1:
+            warns.append(f"{b['id']}: one foley sound - layer 2-3 per mechanism beat (the action + a texture/whoosh + a tail)")
+    cps = cfg["voice"]["en"]["chars_per_sec"]
+    est = len(" ".join(b["narration"]["en"] for b in bl)) / cps
+    if n_fx < est / 5:
+        warns.append(f"{n_fx} foley sounds for ~{est:.0f}s - aim for at least one every ~5 s on top of the automatic whooshes/pops")
+    amb = ASSETS_DIR / "sfx" / "ambience"
+    names = {f.stem for f in amb.glob("*")} if amb.exists() else set()
+    used = [beats.get("ambience")] + [b.get("ambience") for b in bl]
+    if not any(used):
+        warns.append(f"no ambience bed - set top-level 'ambience' (or per beat) to one of {sorted(names)} or 'none'")
+    for n in used:
+        if n and n != "none" and n not in names:
+            warns.append(f"ambience '{n}' not in assets/sfx/ambience/ ({sorted(names)})")
+    for c in beats.get("music_cues") or []:
+        if c.get("at_beat") not in ids:
+            errs.append(f"music_cues: at_beat '{c.get('at_beat')}' is not a beat id")
+        if c.get("mode", "switch") not in ("switch", "drop", "stinger"):
+            errs.append("music_cues: mode must be switch | drop | stinger")
+        if c.get("mode", "switch") == "switch" and not (c.get("mood") or c.get("file")):
+            errs.append(f"music_cues: switch at {c.get('at_beat')} needs a mood or file")
+
+
+def check_numbers(beats: dict, warns: list) -> None:
+    """Every number the narration states should be on screen; numbers are what infographics are for."""
+    info = ("counter", "gauge", "compare", "scale")
+    nums = [m for b in beats["beats"] for m in re.findall(r"\b\d[\d,.]*\b", b["narration"]["en"])]
+    kinds = [s["overlay"]["kind"] for b in beats["beats"] for s in b.get("shots", []) if s.get("overlay")]
+    n_info = sum(k in info for k in kinds)
+    if len(nums) >= 2 and n_info < 2:
+        warns.append(f"narration states {len(nums)} numbers ({', '.join(nums[:5])}) but only {n_info} infographic overlay(s) - "
+                     "show numbers as counter / gauge / compare / scale (style-guide §Overlays)")
+    if len(kinds) > (40 if is_long(beats) else 8):
+        warns.append(f"{len(kinds)} overlays - keep it to 4-8 so each one lands")
+
+
 def check_retention(beats: dict, cfg: dict, errs: list, warns: list) -> None:
     """Retention format (script-playbook §2c), audio (music_mood, foley) and one colour grade per video."""
     bl = beats["beats"]
@@ -224,8 +333,11 @@ def check_retention(beats: dict, cfg: dict, errs: list, warns: list) -> None:
         errs.append(f"visual_plan.grade '{g}' not in config.grade_presets ({', '.join(cfg.get('grade_presets') or {})})")
 
 
-def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
+def validate(beats: dict, cfg: dict, outline: dict | None = None) -> tuple[list[str], list[str], dict]:
     errs, warns = [], []
+    cfg = fmt_cfg(cfg, beats)  # long-form limits when beats.format == "long" (config.long_form)
+    long_ = is_long(beats)
+    ov_ = cfg.get("long_form", {}).get("overrides", {}) if long_ else {}
     for k in ("slug", "title", "style_preset", "assets", "beats"):
         if k not in beats:
             errs.append(f"missing top-level key '{k}'")
@@ -238,8 +350,9 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
         if not x.get("description"):
             errs.append(f"asset {x.get('id')} has no description")
     n_beats = len(beats["beats"])
-    if not 5 <= n_beats <= 14:
-        warns.append(f"{n_beats} beats (aim 6-9 for ~45 s, up to 12-14 for 80-90 s)")
+    lo_b, hi_b = ov_.get("beats_range", (5, 14))
+    if not lo_b <= n_beats <= hi_b:
+        warns.append(f"{n_beats} beats (aim 6-9 for ~45 s, up to 12-14 for 80-90 s; long-form {lo_b}-{hi_b})")
     roles = [b.get("role") for b in beats["beats"]]
     if roles[0] != "hook":
         errs.append("first beat must have role 'hook'")
@@ -256,8 +369,9 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
         for lang in LANGS:
             if not b.get("narration", {}).get(lang, "").strip():
                 errs.append(f"{b['id']}: narration.{lang} empty")
-        if not 1 <= len(b.get("shots", [])) <= 3:
-            errs.append(f"{b['id']}: needs 1-3 shots")
+        max_sh = cfg["long_form"]["max_shots_per_beat"] if long_ else 3
+        if not 1 <= len(b.get("shots", [])) <= max_sh:
+            errs.append(f"{b['id']}: needs 1-{max_sh} shots")
         for s in b.get("shots", []):
             n_shots += 1
             if s["id"] in seen:
@@ -276,12 +390,12 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
                 errs.append(f"{s['id']}: source must be one of {SOURCES} (decide per references/visual-source-decision.md)")
             elif not s.get("source_reason"):
                 warns.append(f"{s['id']}: add a short source_reason")
+            check_fx(s, errs)
             n_code += src == "code3d"
             n_face += src == "faceless"
             ov = s.get("overlay")
             if ov:
-                if ov.get("kind") not in ("number", "icon", "label"):
-                    errs.append(f"{s['id']}: overlay.kind must be number|icon|label")
+                check_overlay(s, ov, errs, warns)
                 for lang in LANGS:
                     trig = (ov.get("trigger") or {}).get(lang)
                     if trig and trig.lower() not in b["narration"][lang].lower():
@@ -304,6 +418,8 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
         if n_face and vp.get("faceless_style") not in faceless_styles():
             errs.append(f"visual_plan.faceless_style must be one of {faceless_styles()} when any shot is 'faceless'")
     check_retention(beats, cfg, errs, warns)
+    check_sound(beats, cfg, errs, warns)
+    check_numbers(beats, warns)
 
     stats = {"beats": n_beats, "shots": n_shots, "hero_shots": heroes, "code3d_shots": n_code, "faceless_shots": n_face, "nano_shots": n_shots - n_code - n_face}
     for lang in LANGS:
@@ -315,7 +431,7 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
         if not lo <= est <= hi:
             errs.append(f"{lang}: estimated {est:.1f}s outside {lo}-{hi}s - tighten/expand script")
     vo = stats["en"]["est_sec"] - end_card_sec(cfg)
-    lo_s, hi_s = max(12, round(vo / 3.0)), round(vo / 2.0) + 2
+    lo_s, hi_s = max(12, round(vo / max(3.0, cfg["video"]["max_shot_sec"] * 0.75))), round(vo / 2.0) + 2
     if not lo_s <= n_shots <= hi_s:
         warns.append(f"{n_shots} shots for ~{vo:.0f}s of narration (aim {lo_s}-{hi_s}, a new picture every 2-3s)")
     if not 3 <= heroes <= max(10, n_shots // 2.5):
@@ -325,6 +441,8 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
     if not wmin <= ew <= wmax:
         warns.append(f"en: {ew} words (aim {wmin}-{wmax})")
     stats["total_chars"] = stats["en"]["chars"] + stats["ta"]["chars"]
+    if long_:
+        check_long_beats(beats, outline, cfg, stats, errs, warns)
     return errs, warns, stats
 
 
@@ -332,7 +450,8 @@ def cmd_validate(a):
     p = project_dir(a.slug)
     cfg = load_config()
     beats = load_beats(p)
-    errs, warns, stats = validate(beats, cfg)
+    outline = json.loads((p / "outline.json").read_text()) if (p / "outline.json").exists() else None
+    errs, warns, stats = validate(beats, cfg, outline)
     for lang in LANGS:
         if stats:
             text, _ = narration_text(beats, lang)
@@ -342,8 +461,9 @@ def cmd_validate(a):
                 spine = (f"[EXPLAINER] Q: {ex.get('question', '')}\nA: {ex.get('answer', '')}\n"
                          f"Chain: {' -> '.join(ex.get('chain') or [])}\nAnalogy: {ex.get('analogy', '')}\n"
                          + "".join(f"Term: {t.get('term')} = {t.get('plain')}\n" for t in ex.get("terms") or []) + "\n")
+            card = lambda b: f"\n=== {b['chapter_card'][lang]} ===\n" if (b.get("chapter_card") or {}).get(lang) else ""  # noqa: E731
             (p / f"script_{lang}.txt").write_text(spine +
-                "\n\n".join(f"[{b['id']} · {b['role']}] {b['narration'][lang]}" for b in beats["beats"]) + "\n")
+                "\n\n".join(f"{card(b)}[{b['id']} · {b['role']}] {b['narration'][lang]}" for b in beats["beats"]) + "\n")
     print(json.dumps({"ok": not errs, "errors": errs, "warnings": warns, "stats": stats}, ensure_ascii=False, indent=2))
     if errs:
         raise SystemExit(2)
@@ -351,7 +471,8 @@ def cmd_validate(a):
 
 def cmd_status(a):
     p = project_dir(a.slug)
-    out = {"dir": str(p), "beats.json": (p / "beats.json").exists()}
+    out = {"dir": str(p), "outline.json": (p / "outline.json").exists(), "plan.md": (p / "plan.md").exists(),
+           "beats.json": (p / "beats.json").exists()}
     if out["beats.json"]:
         beats = load_beats(p)
         shots = [s for _, s in iter_shots(beats)]
@@ -374,10 +495,13 @@ def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     i = sub.add_parser("init"); i.add_argument("idea"); i.add_argument("--slug")
+    i.add_argument("--long", action="store_true", help="4-12 min long-form video (references/long-form-playbook.md)")
+    i.add_argument("--minutes", type=float, default=9.0)
+    pl = sub.add_parser("plan"); pl.add_argument("slug")
     v = sub.add_parser("validate"); v.add_argument("slug")
     s = sub.add_parser("status"); s.add_argument("slug")
     a = ap.parse_args()
-    {"init": cmd_init, "validate": cmd_validate, "status": cmd_status}[a.cmd](a)
+    {"init": cmd_init, "plan": cmd_plan, "validate": cmd_validate, "status": cmd_status}[a.cmd](a)
 
 
 if __name__ == "__main__":

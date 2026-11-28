@@ -30,3 +30,8 @@ Example: `example/` = **WHAT IF THE POWER WENT OUT FOR 3 DAYS?** (34 s, 12 shots
 - Black figures vanish on night walls → `glow: true` in every night shot.
 - Figures too small in the room → h ≈ 840 for full-body shots.
 - Long captions running off screen → keep chunks short; the bar auto-shrinks but small text is hard to read.
+
+## Motion polish (core/motion.js)
+Pure easing helpers shared with the 3D styles: `anticip`, `overshoot`, `spring`, `follow`, `squash` (→ `{y, xz}`), `stagger`,
+`ramp`. Every key action = anticipation → move → overshoot settle; one follow-through element per moving hero part
+(hair, tail, cape, shadow); stagger groups so one thing moves at a time.

@@ -11,7 +11,7 @@ import argparse
 import json
 import re
 
-from common import LANGS, ROOT, end_card_sec, load_config, project_dir, run
+from common import LANGS, ROOT, end_card_sec, fmt_cfg, load_beats, load_config, project_dir, run
 
 
 def probe(f) -> dict:
@@ -25,8 +25,8 @@ def main():
     ap.add_argument("slug")
     ap.add_argument("--lang", nargs="*", default=list(LANGS))
     a = ap.parse_args()
-    cfg = load_config()
     pdir = project_dir(a.slug)
+    cfg = fmt_cfg(load_config(), load_beats(pdir))  # long-form duration / shot / hook limits when beats.format == "long"
     V, D = cfg["video"], cfg["duration"]
     report, failed = [f"# QA report - {a.slug}\n"], False
     for lang in a.lang:
@@ -77,8 +77,10 @@ def main():
         # quality checks (Zack D.-level upgrade)
         beats = json.loads((pdir / "beats.json").read_text())
         music_off = not cfg["audio"].get("music") or beats.get("music_mood") == "none"
-        checks.append((bool(tl.get("music")) or music_off,
-                       f"background music {'present: ' + tl['music']['src'] if tl.get('music') else ('off by choice' if music_off else 'MISSING - fill assets/music/<music_mood>/ (assets/DOWNLOADS.md)')}"))
+        mus = tl.get("music") or []
+        mus = [mus] if isinstance(mus, dict) else mus   # older timelines: one dict
+        checks.append((bool(mus) or music_off,
+                       f"background music {'present: ' + ', '.join(sorted({m['src'] for m in mus})) if mus else ('off by choice' if music_off else 'MISSING - fill assets/music/<music_mood>/ (assets/DOWNLOADS.md)')}"))
         st = tl["captionStyle"]
         checks.append((st["highlight"].lower() != st["color"].lower(), f"caption highlight colour {st['highlight']} differs from {st['color']}"))
         # the first 2-4 seconds (script-playbook §2c) and narration flow (§2d)
@@ -88,7 +90,8 @@ def main():
         hook_end = V["preroll_sec"] + (b1["end"] if b1 else 99)
         checks.append((hook_end <= hc.get("qa_max_sec", 4.0), f"spoken hook ends at {hook_end:.2f}s (must be <= {hc.get('qa_max_sec', 4.0)}s)"))
         ht = next((o for o in tl["overlays"] if o.get("kind") == "hook"), None)
-        checks.append((bool(ht) and ht["from"] == 0, f"hook title on screen from frame 0: {repr(ht['text']) if ht else 'MISSING - add beats.json hook_text and re-run timeline.py'}"))
+        if hc.get("text_required", True):
+            checks.append((bool(ht) and ht["from"] == 0, f"hook title on screen from frame 0: {repr(ht['text']) if ht else 'MISSING - add beats.json hook_text and re-run timeline.py'}"))
         warns = []
         segs = tl["segments"]
         gap_max = fc.get("max_gap_sec", 0.9)
@@ -101,7 +104,7 @@ def main():
         first_change = segs[1]["from"] / tl["fps"] if len(segs) > 1 else dur
         if first_change > 2.0:
             warns.append(f"first picture change at {first_change:.2f}s (want <= 2.0s: the hook needs a second image fast)")
-        if tl.get("music") and not tl["music"].get("duckCurve"):
+        if mus and not all(m.get("duckCurve") for m in mus):
             warns.append("music is not ducked under the voice (re-run timeline.py)")
         bl = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(f), "-vf", "fps=2,blurdetect,metadata=print:key=lavfi.blur",
                   "-an", "-f", "null", "-"]).stderr

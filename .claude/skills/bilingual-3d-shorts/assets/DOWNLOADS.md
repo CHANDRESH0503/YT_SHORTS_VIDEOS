@@ -43,5 +43,17 @@ in beats.json plays `sfx/foley/crack.wav` (or .mp3) exactly on its trigger word.
 Names: `squish`, `crack` (knuckle or bone), `gulp`, `heartbeat`, `breath-in`, `breath-out`, `fizz`, `splash`, `tick` (clock),
 `stomach-gurgle`, `crunch`, `drip`. Search each name on Pixabay or Freesound (CC0); WAV or MP3 are both fine.
 
-## 4. Hero video clips (per project, not here)
+## 4. Ambience beds: `sfx/ambience/` (room tone under every set)
+`python3 sfx.py` made synthetic stopgaps (`room-hum`, `wind`, `river`, `night`, `outdoor`). Real recordings sound far
+better: same names, 20-60 s, loopable, no voices or music. Search: `room tone`, `wind ambience`, `river stream ambience`,
+`night crickets ambience`, `countryside birds ambience`. Add more names freely (e.g. `city`, `lab`, `underwater`); beats.json
+`ambience` uses the file name.
+
+## 5. Stingers: `music/stingers/` and kit additions
+- `music/stingers/`: 1-3 s musical hits for the payoff (`music_cues` mode `stinger`). Search `cinematic stinger`, `reveal hit`,
+  `logo sting short`. The synthetic `stinger-01.wav` is a stopgap.
+- `sfx/tick.wav` (UI tick under counters, < 0.1 s, `ui tick`, `clock tick single`) and `sfx/subdrop.wav` (low boom under
+  flash cuts, about 1 s, `sub drop`, `bass drop impact`): same names replace the synthetic ones.
+
+## 6. Hero video clips (per project, not here)
 See `../references/free-video-tiers.md`. Those go in `projects/<slug>/clips/Sxx.mp4`.
