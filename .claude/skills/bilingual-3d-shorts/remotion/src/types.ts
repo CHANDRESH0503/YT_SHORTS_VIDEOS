@@ -38,7 +38,7 @@ export type Timeline = {
 	captions: Caption[];
 	overlays: Overlay[];
 	sfx: Sfx[];
-	music: null | {src: string; volume: number};
+	music: null | {src: string; volume: number; duck?: number; duckCurve?: number[][]};
 	endCard?: null | EndCard;
 	captionStyle: {
 		font: string;
@@ -52,5 +52,6 @@ export type Timeline = {
 		shadow: string;
 	};
 	overlayStyle: {yPercent: number; size: number};
-	grade: {tint: string; tint_opacity: number; vignette: number; contrast: number; saturate: number; brightness: number};
+	grade: {tint: string; tint_opacity: number; vignette: number; contrast: number; saturate: number; brightness: number; grain?: number};
+	gradeName?: string;
 };

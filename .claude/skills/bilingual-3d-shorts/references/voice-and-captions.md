@@ -19,7 +19,8 @@
 ## Captions
 - Built from real word timings (no guessing). EN: up to 3 words / 18 chars per chunk; TA: up to 2 words / 16 chars.
 - Chunks break at sentence punctuation and at beat boundaries; trailing commas/periods are hidden, ?/! kept.
-- Style: white, heavy weight, black stroke + soft shadow, no box, pop-in spring, centered at 70% height
+- Style: white, heavy weight, black stroke + soft shadow, no box, pop-in spring, the word being spoken turns yellow
+  (`captions.highlight_color` #FFD43B), centered at 70% height
   (keeps clear of the Shorts title/description area and the right-side action buttons).
 - Tamil uses Noto Sans Tamil (Google Fonts, loaded by Remotion → Chromium/HarfBuzz shaping = correct conjuncts and vowel signs).
 - `final/<slug>_<lang>.srt` is also written: upload the *other* language's SRT as a CC track on each video

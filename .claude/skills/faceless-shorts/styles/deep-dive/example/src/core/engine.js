@@ -1,4 +1,5 @@
-// Renderer + film look: ACES tone curve, soft shadows, environment light, bloom, depth of field, vignette + grain.
+// Renderer + film look: ACES tone curve, soft shadows, environment light, GTAO contact shadows, depth of field, bloom,
+// vignette + grain, SMAA. Pass order: render → GTAO → DOF → bloom → output (tone map) → grade → SMAA.
 //   const E = makeEngine(canvas)   ·   E.render(scene, camera, { bloom, focus, aperture, maxblur, grade })
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -7,12 +8,16 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 export const W = 1080, H = 1920;
 /** render quality from the URL: ?res=0.6 renders 3D at 60% size (upscaled), ?aa=0 turns MSAA off, ?shadow=1024 */
 const Q = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 export const RES = +(Q.get('res') || 1), AA = +(Q.get('aa') ?? 4), SHADOW = +(Q.get('shadow') || 2048);
+/** ?ao=0 turns ambient occlusion off everywhere (faster drafts / no GPU) */
+const AO_ON = (Q.get('ao') ?? '1') !== '0';
 const GRADE = {
   uniforms: { tDiffuse: { value: null }, uVig: { value: 0.35 }, uGrain: { value: 0.025 }, uTime: { value: 0 }, uWarm: { value: 0.04 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -33,15 +38,23 @@ export function makeEngine(canvas, { w = W, h = H, samples = 4, shadowSize = 204
   renderer.userData = { shadowSize };
   const composer = new EffectComposer(renderer, rt); composer.setSize(w, h);
   const rp = new RenderPass(new THREE.Scene(), new THREE.PerspectiveCamera()); composer.addPass(rp);
+  // ambient occlusion: soft contact shadows where things meet (feet/floor, arms/torso, props/table)
+  const gtao = new GTAOPass(rp.scene, rp.camera, w, h); gtao.output = GTAOPass.OUTPUT.Default; composer.addPass(gtao);
+  gtao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1, scale: 1, samples: 16 });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
   const bokeh = new BokehPass(rp.scene, rp.camera, { focus: 3, aperture: 0.002, maxblur: 0.008 }); composer.addPass(bokeh);
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.35, 0.6, 0.85); composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GRADE); composer.addPass(grade);
+  const smaa = new SMAAPass(w, h); composer.addPass(smaa);   // last: cleans edges the post passes leave
   return {
     renderer, envMap, composer,
-    /** look = { bloom, bloomThreshold, focus (m), aperture (0 = all sharp), maxblur, exposure, vignette, grain, warm, t } */
+    /** look = { bloom, bloomThreshold, focus (m), aperture (0 = all sharp), maxblur, exposure, vignette, grain, warm, t,
+     *          ao (0..1 ambient occlusion; default scene.userData.ao, 0 when unset: keep it 0 for x-ray and glowing sets) } */
     render(scene, camera, look = {}) {
-      rp.scene = scene; rp.camera = camera; bokeh.scene = scene; bokeh.camera = camera;
+      rp.scene = scene; rp.camera = camera; bokeh.scene = scene; bokeh.camera = camera; gtao.scene = scene; gtao.camera = camera;
+      const ao = AO_ON ? (look.ao ?? scene.userData.ao ?? 0) : 0;
+      gtao.enabled = ao > 0; gtao.blendIntensity = ao;
       bokeh.enabled = (look.aperture ?? 0.0015) > 0;
       bokeh.uniforms.focus.value = look.focus ?? 3; bokeh.uniforms.aperture.value = look.aperture ?? 0.0015; bokeh.uniforms.maxblur.value = look.maxblur ?? 0.006;
       bloom.strength = look.bloom ?? 0.3; bloom.threshold = look.bloomThreshold ?? 0.85; bloom.radius = 0.6;

@@ -1,6 +1,6 @@
 ---
 name: bilingual-3d-shorts
-description: Turn a one-line idea into two production-ready 40-55s vertical 3D explainer YouTube Shorts, one in English and one in Tamil, each with its own voiceover and burned-in word-synced captions (plus SRTs). It researches the topic, writes a curiosity-loop script, transcreates it into spoken Tamil, generates 3D keyframes, writes a free image-to-video prompt pack, and renders and QA-checks both videos. Use when the user gives a short idea, question or topic and wants a Short, Reel or 3D explainer video made from it, says "make a short about …", or asks to continue an existing short project.
+description: Turn a one-line idea into two production-ready 35-55s vertical 3D explainer YouTube Shorts, one in English and one in Tamil, each with its own voiceover and burned-in word-synced captions (plus SRTs). It researches the topic, writes a curiosity-loop script, transcreates it into spoken Tamil, generates 3D keyframes, writes a free image-to-video prompt pack, and renders and QA-checks both videos. Use when the user gives a short idea, question or topic and wants a Short, Reel or 3D explainer video made from it, says "make a short about …", or asks to continue an existing short project.
 ---
 
 # Bilingual 3D Explainer Shorts (EN + TA)
@@ -28,6 +28,11 @@ projects in `YT_VIDEOS/projects/<slug>/`. Read these when you reach the step tha
 ## Stage 0: Preflight (each new project)
 Run `python3 doctor.py`. If disk, Remotion, the ElevenLabs key or the SFX kit FAILs, stop and tell the user the exact fix.
 Never print or echo the contents of `.env`.
+**Audio assets** (`assets/DOWNLOADS.md` says what the user downloads and where):
+- If `assets/sfx/incoming/` has files named like the kit (`whoosh`, `whoosh2`, `pop`, `riser`, `impact`, `ding`), convert each one:
+  `ffmpeg -y -i assets/sfx/incoming/<name>.<ext> -ac 2 -ar 48000 assets/sfx/<name>.wav`, then delete the incoming file.
+- If `assets/music/<mood>/` folders are all empty, tell the user once: "no music yet, the video will be voice + SFX only;
+  see assets/DOWNLOADS.md". Don't block.
 Then read `references/learnings.md` and apply every lesson that fits this project (prompt fixes, pacing, visual-source choices,
 user preferences). At Gate 1, add one line saying which past lessons you applied.
 
@@ -45,8 +50,10 @@ Write `beats.json` following script-playbook §2, §2b and §4 and style-guide (
 - **Narrative style (§2b, required):** fill the `explainer` spine first, then write each mechanism beat as What → Why → So.
   Define every technical term in the sentence it first appears, say the analogy at the hardest step, bridge each beat to the last,
   and make the payoff restate the answer. The test: from the narration alone, a viewer could explain it to a friend.
+- **Retention format (script-playbook §2c, required):** cold open on the most extreme image, hook ≤ 10 words in second person,
+  escalate every beat, one close-up sound moment per mechanism beat, a loop ending that echoes the hook, and a `music_mood`.
 - 6-9 beats, hook first and payoff last, with at least one twist. Use 2-3 shots per beat, 14-20 shots in total, and 5-8 `hero` shots.
-- English narration should be 115-150 words. Write the Tamil narration per beat as a **transcreation** (§3), not a translation.
+- English narration should be 100-140 words. Write the Tamil narration per beat as a **transcreation** (§3), not a translation.
 - Each shot needs a concrete `scene`, `asset_refs`, a `camera_move` (never the same one twice in a row) and `lighting_camera`.
   Hero shots also need a `motion_prompt`. Add 4-7 `overlay`s with triggers that appear in both languages.
 **Visual source decision (required):** before validating, score every shot against `references/visual-source-decision.md` and pick
@@ -57,6 +64,13 @@ one of three sources. Set `"source": "code3d" | "faceless" | "nano"` and a one-l
   `stick-story`, `paper-atlas` or `tall-tale`; one style per video). Read that style's `STYLE.md` before choosing.
 - `nano`: anything that must look photoreal. A realistic (photoreal) person, face, animal, food or landscape is always `nano`.
 Keep code3d + faceless within the ~90 min build budget. If code3d or faceless shots are few (1-2), use nano instead.
+**Look and sound fields (required for quality):**
+- `visual_plan.grade`: one colour grade for the whole video: `teal` | `warm-sunlit` | `night` | `neutral` (`config.grade_presets`).
+  If you leave it out, timeline.py picks it from `faceless_style` (deep-dive and tall-tale → warm-sunlit, night-file → night,
+  the 2D styles → neutral) or uses teal.
+- `cast` when any shot is faceless: `{"hero": {"skin", "shirt", "pants", "shoes", "hair", "iris"}}`, the same person in every shot.
+- `music_mood`, and on one shot per mechanism beat `"sfx": [{"name": "crack", "trigger": {"en": "…", "ta": "…"}}]`.
+  The name is a file in `assets/sfx/foley/` (assets/DOWNLOADS.md); the sound lands on the trigger word.
 Then run `python3 project.py validate <slug>`. Fix every error and re-run until `ok: true`. Resolve warnings unless there is a reason not to.
 
 ### GATE 1: script approval (stop and wait)
@@ -67,6 +81,7 @@ Show the user:
 - the estimated seconds per language
 - how many characters the voices will use, against the ElevenLabs credits left (`python3 voice.py credits`)
 - 2-3 key sources
+- the `music_mood`, and which track it will use (or that the folder is empty)
 - the **visual plan**: mode, which shots are code-built 3D, which are faceless-shorts (and which style), and which you make in Nano Banana (with counts), and the one-line reason
 
 Ask for approval or edits. **Do not spend credits before approval.**
@@ -82,11 +97,13 @@ Ask for approval or edits. **Do not spend credits before approval.**
 2. `python3 faceless.py <slug>` copies the style's example engine to `projects/<slug>/faceless/` and gives every faceless shot a silent,
    caption-free 5 s slot. It prints the slot list (`L(k) = Sxx: scene`) and writes `faceless/slots.json`.
 3. Rewrite `faceless/src/shots.js`: one shot per slot, `add({ id: 'Sxx', at: L(k), draw(lt, d, t, blit) {...} })`, reusing the style's
-   kit (sets, `Human`, x-ray, look2d). Follow the shot's `scene` and `camera_move`, and keep the camera moving. Don't use `Wd()` (no words here),
+   kit (sets, `Human`, x-ray, look2d), with `new Human(CAST.hero)` from `./cast.js` and a facial reaction (`brow`, `mouth`) in every
+   real-world shot of the hero. Follow the shot's `scene` and `camera_move`, and keep the camera moving. Don't use `Wd()` (no words here),
    and don't draw captions or text pills over the lower third: Remotion adds captions and overlays.
 4. `python3 faceless.py <slug> --check` (must print CHECK OK). Iterate on single frames with
    `node tools/capture.mjs frames review/f "<t>"` inside `faceless/`, and look at them.
-5. `python3 faceless.py <slug> --export` renders every faceless shot to `clips/Sxx.mp4` (5 s, 1080x1920, 30 fps) + `keyframes/Sxx.png`.
+5. `python3 faceless.py <slug> --export --mb 4` renders every faceless shot to `clips/Sxx.mp4` (5 s, 1080x1920, 30 fps) + `keyframes/Sxx.png`,
+   with real motion blur (~35 s per shot). Use it without `--mb` for quick drafts.
    Re-export one shot with `--only S04`. No GPU: put `SOFTWARE_GL=1 QS='&res=0.6&aa=0&shadow=1024'` in front of the command (slow, so tell the user).
 
 **3b. Nano Banana shots** (`source: nano`), made by the user (skip this if there are none):
@@ -94,7 +111,7 @@ Ask for approval or edits. **Do not spend credits before approval.**
    nano shot (code3d and faceless shots are listed as "skip"), with the exact filename and which reference image to upload. Give the user the path.
 2. **Wait for the user** to drop the frames in. Never call an image API.
 3. When the user says `continue <slug>`, run `python3 keyframes.py <slug> --check`. It renames loose names (`s1.png`, `S01 (1).jpg`),
-   centre-crops to 9:16, normalises to 1080x1920 PNG (originals kept in `keyframes/originals/`), flags low-resolution frames and builds
+   centre-crops to 9:16, normalises to a 1404x2496 PNG (1.3x, lanczos + light sharpen, so push-ins stay crisp; originals kept in `keyframes/originals/`), flags low-resolution frames and builds
    `qa/keyframes_sheet.jpg` across all sources. It exits non-zero while any nano frame is missing or any code3d or faceless shot is unrendered.
 4. View the contact sheet. Flag clear failures with a fix for that shot's prompt: text or letters in the image, a visible watermark,
    broken anatomy, the wrong subject, a mismatched world, a frame that lost its subject in the 9:16 crop, or a look that clashes with the 3D
@@ -121,7 +138,10 @@ Clips can be added later and only Stages 6-7 need re-running.
 - Listen-proxy check: read `audio/<lang>/words.json`. Every beat has words, and timings are monotonic.
 
 ## Stage 6: Timeline and render
-1. `python3 timeline.py <slug>`. The longest shot must be ≤4s and every hero clip present must show up in `clip_segments`.
+1. `python3 timeline.py <slug>`. The longest shot must be ≤3s and every hero clip present must show up in `clip_segments`.
+   Music comes from `assets/music/<music_mood>/` (first file, or the exact `beats.music`) and is ducked under the voice
+   automatically (`audio.music_duck`). The printed summary shows `grade`, `music` and the number of `foley` sounds placed;
+   if `music` is null or a WARN lists missing foley files, tell the user which files to add (assets/DOWNLOADS.md).
 2. Optional fast draft: `python3 render.py <slug> --preview`. Extract 2-3 frames with ffmpeg and view them.
    Every video ends with the **channel end card** (`config.json → end_card`, ~2.5s after the last word): that language's channel
    logo (`YT_VIDEOS/brand/icon_en.png` → How is this, `brand/icon_ta.png` → How is this - Tamil), the channel name and an animated
@@ -133,6 +153,7 @@ Clips can be added later and only Stages 6-7 need re-running.
 2. View `qa/contact_en.jpg`, `qa/contact_ta.jpg` and `qa/reference_sheet.jpg`, and go through the visual checklist in qa-checklist.md.
    Especially check that the Tamil glyphs are intact.
    Also run the explanation check: listen to each language once and confirm the "why" in every mechanism beat is audible, not lost to fast pacing.
+   Then the **muted 3-second test** (qa-checklist): frames 0-3s alone must make you curious. If not, fix shot 1 before delivering.
 3. Run Stage 8 below before Gate 4. It replaces the old hand-written `metadata_<lang>.md`.
 4. **GATE 4.** Show the final paths (videos, SRTs, `thumbnail_<lang>.jpg` (9:16) and `thumbnail_<lang>_16x9.jpg` (16:9), `publish_<lang>.md`), the chosen titles, QA results, a one-line summary of anything you could not verify, and the remaining ElevenLabs credits.
    Also ask: "Anything you'd want done differently next time?" (optional, feeds Stage 9).
@@ -161,7 +182,10 @@ This makes every Short better than the last one. Do it even when the project wen
    - Publish-kit lessons (thumbnails, titles, SEO) go in learnings.md "Publish kit" and, when firm, in `../shorts-publish-kit/references/seo-playbook.md`.
    - Lessons that need a **script/code change** are not applied silently: list them for the user as proposals and change code only if they approve.
    - Never weaken a Hard rule through a lesson.
-5. **Report** to the user in 3-6 lines: the lessons added or refined, any rule promoted (file and section), and any code changes proposed.
+5. **Retention follow-up (optional, after publishing):** when the user pastes a YouTube Studio retention curve (or the
+   drop-off seconds), map each big drop to its beat and shot via `timeline_<lang>.json` (segment `from`/`dur` ÷ fps), find the
+   cause (slow shot, weak line, late picture change) and add the lesson to `references/learnings.md`.
+6. **Report** to the user in 3-6 lines: the lessons added or refined, any rule promoted (file and section), and any code changes proposed.
 
 ## Hard rules
 - Requests for a Short in this workspace go through this pipeline (EN + TA). The faceless-shorts skill is used only as the

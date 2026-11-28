@@ -22,6 +22,41 @@ ALT_MOVE = {"push_in": "pull_out", "pull_out": "push_in", "pan_left": "pan_right
             "static_drift": "push_in"}
 OVERLAY_COLORS = {"number": "#E8F1F5", "icon": "#FFFFFF", "label": "#7DF9FF"}
 END_PUNCT = tuple(".?!,;:…।")
+AUDIO_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".ogg")
+
+
+def pick_grade(beats: dict, cfg: dict) -> tuple[str, dict]:
+    """One colour grade per video: visual_plan.grade, else the faceless style's default, else teal."""
+    presets = cfg.get("grade_presets") or {}
+    vp = beats.get("visual_plan") or {}
+    by_style = cfg.get("grade_by_style") or {}
+    name = vp.get("grade") or (by_style.get(vp.get("faceless_style")) if vp.get("mode") in ("faceless", "hybrid")
+                               and vp.get("faceless_style") else None) or by_style.get("_default", "teal")
+    if name not in presets:
+        if vp.get("grade"):
+            die(f"visual_plan.grade '{name}' not in config.grade_presets ({', '.join(presets)})")
+        return "legacy", cfg["grade"]
+    return name, {"grain": 0.05, **presets[name]}
+
+
+def duck_curve(words: list, pre: float, fps: int, total: int, ramp: int = 5) -> list[list[float]]:
+    """Music gain keyframes [frame, gain]: 1 between lines, ducked (0) under speech, ~150 ms ramps."""
+    spans = []
+    for w in words:
+        s, e = int(round((pre + w["start"]) * fps)), int(round((pre + w["end"]) * fps))
+        if spans and s - spans[-1][1] <= int(0.35 * fps):
+            spans[-1][1] = max(spans[-1][1], e)
+        else:
+            spans.append([s, e])
+    pts = [[0, 1.0]]
+    for s, e in spans:
+        a = max(s - ramp, pts[-1][0] + 1)
+        if a >= s:
+            s = a + 1
+        pts += [[a, 1.0], [s, 0.0], [max(e, s + 1), 0.0], [max(e, s + 1) + ramp, 1.0]]
+    if pts[-1][0] < total:
+        pts.append([total, 1.0])
+    return pts
 
 
 def build(slug: str, lang: str, cfg: dict) -> dict:
@@ -157,6 +192,30 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
             shutil.copy2(f, sfx_dir / f.name)
     vol = cfg["audio"]["sfx"]
     sfx = []
+    # ---- foley: per-shot close-up sounds on their trigger word (assets/sfx/foley/<name>.*) ----
+    foley_dir = ASSETS_DIR / "sfx" / "foley"
+    foley_missing = []
+    for b in beats["beats"]:
+        for s in b["shots"]:
+            for fx in s.get("sfx") or []:
+                src = next((f for f in sorted(foley_dir.glob(f"{fx['name']}.*")) if f.suffix.lower() in AUDIO_EXTS), None)
+                if not src:
+                    foley_missing.append(fx["name"])
+                    continue
+                (sfx_dir / "foley").mkdir(exist_ok=True)
+                if not (sfx_dir / "foley" / src.name).exists():
+                    shutil.copy2(src, sfx_dir / "foley" / src.name)
+                at = first_seg[s["id"]]["from"] + 6
+                trig = (fx.get("trigger") or {}).get(lang)
+                if trig:
+                    key = norm_word(trig.split()[0])
+                    for w in words:
+                        if w.get("beat") == b["id"] and key and norm_word(w["text"]).startswith(key):
+                            at = F(pre + w["start"]) + int(fx.get("offset_frames", 0))
+                            break
+                sfx.append({"from": max(0, at), "src": f"sfx/foley/{src.name}", "volume": float(fx.get("volume", vol.get("foley", 0.6)))})
+    if foley_missing:
+        print(f"WARN {lang}: foley sounds not found in assets/sfx/foley/: {', '.join(sorted(set(foley_missing)))} (see assets/DOWNLOADS.md)")
     for i, sg in enumerate(segs):
         if sg["transition"] in ("whip_left", "whip_right", "zoom"):
             name = "whoosh" if sg["transition"] != "zoom" else "whoosh2"
@@ -170,14 +229,20 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
 
     music = None
     m = cfg["audio"]["music"]
-    if m:
-        cands = sorted((ASSETS_DIR / "music").glob("*")) if m == "auto" else [ASSETS_DIR / "music" / m]
+    if m and beats.get("music_mood") != "none":
+        mood = beats.get("music_mood")  # assets/music/<mood>/ (see assets/DOWNLOADS.md); beats.music picks one file
+        if beats.get("music"):
+            cands = [ASSETS_DIR / "music" / beats["music"]]
+        elif mood and (ASSETS_DIR / "music" / mood).is_dir():
+            cands = sorted((ASSETS_DIR / "music" / mood).glob("*"))
+        else:
+            cands = sorted((ASSETS_DIR / "music").glob("*")) if m == "auto" else [ASSETS_DIR / "music" / m]
         cands = [c for c in cands if c.suffix.lower() in (".mp3", ".wav", ".m4a", ".aac") and c.exists()]
         if cands:
             dst = sfx_dir / f"music{cands[0].suffix.lower()}"
-            if not dst.exists():
-                shutil.copy2(cands[0], dst)
-            music = {"src": f"sfx/{dst.name}", "volume": cfg["audio"]["music_volume"]}
+            shutil.copy2(cands[0], dst)  # always refresh, so a changed mood/track takes effect
+            music = {"src": f"sfx/{dst.name}", "volume": cfg["audio"]["music_volume"],
+                     "duck": cfg["audio"].get("music_duck", 1.0), "duckCurve": duck_curve(words, pre, fps, total)}
 
     # ---- end card: channel logo + subscribe ask, appended after the last shot ----
     end_card = None
@@ -196,6 +261,7 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
         total += end_card["dur"]
 
     cap = cfg["captions"]
+    grade_name, grade = pick_grade(beats, cfg)
     return {
         "lang": lang, "fps": fps, "width": V["width"], "height": V["height"], "durationInFrames": total,
         "vo": {"src": f"audio/{lang}/vo.mp3", "from": F(pre)},
@@ -204,7 +270,7 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
                          "maxWidthPercent": cap["max_width_percent"], "color": cap["color"],
                          "highlight": cap["highlight_color"], "stroke": cap["stroke_px"], "shadow": cap["shadow"]},
         "overlayStyle": {"yPercent": cfg["overlay"]["y_percent"], "size": cfg["overlay"]["size"]},
-        "grade": cfg["grade"],
+        "grade": grade, "gradeName": grade_name,
     }
 
 
@@ -222,7 +288,9 @@ def main():
         print(json.dumps({"lang": lang, "seconds": round(tl["durationInFrames"] / tl["fps"], 2), "segments": len(segs),
                           "max_seg_sec": round(max(s["dur"] for s in segs) / tl["fps"], 2),
                           "clip_segments": sum(1 for s in segs if s["clip"]), "captions": len(tl["captions"]),
-                          "overlays": len(tl["overlays"]), "end_card": bool(tl["endCard"])}))
+                          "overlays": len(tl["overlays"]), "end_card": bool(tl["endCard"]), "grade": tl["gradeName"],
+                          "music": tl["music"]["src"] if tl["music"] else None,
+                          "foley": sum(1 for s in tl["sfx"] if "/foley/" in s["src"])}))
 
 
 if __name__ == "__main__":

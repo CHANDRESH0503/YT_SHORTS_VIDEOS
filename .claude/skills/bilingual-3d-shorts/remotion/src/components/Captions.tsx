@@ -28,6 +28,7 @@ export const Captions: React.FC<{captions: Caption[]; style: Timeline['captionSt
 	const pop = spring({frame: local, fps, config: {damping: 13, stiffness: 220, mass: 0.6}});
 	const scale = interpolate(pop, [0, 1], [0.78, 1]);
 	const lift = interpolate(pop, [0, 1], [22, 0]);
+	const fadeOut = interpolate(frame, [active.to - 4, active.to], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
 
 	return (
 		<AbsoluteFill style={{pointerEvents: 'none'}}>
@@ -40,6 +41,7 @@ export const Captions: React.FC<{captions: Caption[]; style: Timeline['captionSt
 					display: 'flex',
 					justifyContent: 'center',
 					transform: `translateY(calc(-50% + ${lift}px)) scale(${scale})`,
+					opacity: fadeOut,
 				}}
 			>
 				<div
@@ -59,10 +61,20 @@ export const Captions: React.FC<{captions: Caption[]; style: Timeline['captionSt
 				>
 					{active.words.map((w, i) => {
 						const on = frame >= w.from && frame < Math.max(w.to, w.from + 4);
+						// the spoken word turns yellow and pops 8% (springs in over ~4 frames)
+						const wp = on ? spring({frame: frame - w.from, fps, config: {damping: 12, stiffness: 260, mass: 0.5}}) : 0;
+						const ws = on ? interpolate(wp, [0, 1], [1.0, 1.08]) : 1;
 						return (
-							<span key={i} style={{color: on ? style.highlight : style.color}}>
+							<span
+								key={i}
+								style={{
+									color: on ? style.highlight : style.color,
+									display: 'inline-block',
+									transform: `scale(${ws})`,
+									marginRight: i < active.words.length - 1 ? '0.26em' : 0,
+								}}
+							>
 								{w.text}
-								{i < active.words.length - 1 ? ' ' : ''}
 							</span>
 						);
 					})}

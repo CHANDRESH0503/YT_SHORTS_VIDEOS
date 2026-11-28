@@ -1,4 +1,4 @@
-# Script playbook: one line → 40-55s curiosity-loop Short
+# Script playbook: one line → 35-55s curiosity-loop Short
 
 ## 1. Research the line (always, before writing)
 Use WebSearch (standard mode; extended only if results are thin). Collect into `research.md`:
@@ -17,10 +17,10 @@ Pick ONE angle (state it in research.md):
 | Animal genius | "This bird can do math" | animal behaviour |
 Reject angles that are not visual, need on-screen text to understand, or rely on gore. Medical/health: explain, never advise.
 
-## 2. Structure (6-9 beats; 115-150 English words; ≈40-52s)
+## 2. Structure (6-9 beats; 100-140 English words; ≈35-50s)
 | # | role | time | job |
 |---|---|---|---|
-| 1 | hook | 0-3s | Question or shocking claim, ≤ 12 words, no intro, no "In this video". |
+| 1 | hook | 0-2s | Question or shocking claim, **≤ 10 words**, no intro, no "In this video" (see §2c). |
 | 2 | mechanism | 3-12s | Set up the situation concretely (who/what/where). |
 | 3-4 | mechanism / escalation | 12-30s | Step-by-step how it works; each line raises a new question. |
 | 5 | twist | 30-38s | "But…" – the counter-intuitive turn. Gets the flash cut + riser. |
@@ -32,7 +32,24 @@ Rules:
 - Short spoken sentences, 6-14 words. Concrete nouns. Present tense for scenes.
 - Numbers as words the TTS will read well ("three times", "ninety percent").
 - No filler: "basically", "actually" at most once.
-- Each beat = 5-8s of narration = 2-3 shots. Mark 5-8 shots `hero: true` (hook shot, mechanism money shot, twist, payoff are mandatory heroes).
+- Each beat = 4-7s of narration = 2-3 shots (a new picture every 2-3s; shots are capped at 3s). Mark 5-8 shots `hero: true` (hook shot, mechanism money shot, twist, payoff are mandatory heroes).
+
+## 2c. Retention format (what high-retention 3D explainer Shorts do; write it in our own words)
+Research (Nov 2026): 50-60% of viewers who leave do so in the first 3 seconds, and a hook in the first 1-2 seconds keeps
+noticeably more of them. Replays count toward retention, so a loop ending pays off. Rules:
+- **Cold open on the most extreme moment.** Shot 1 shows the consequence or the strangest image, not the setup.
+  Never open on an establishing wide, a logo or a title.
+- **Second person, present tense:** "What happens if you…", "You swallow…", "Your heart…". It puts the viewer in the body.
+- **Hook ≤ 10 words, spoken from 0.15 s.** The first picture already matches the first words.
+- **Escalate every beat:** each beat is bigger, stranger or closer than the last (time jumps: "after 10 seconds…",
+  "after 2 minutes…" work well).
+- **One sound moment per mechanism beat:** write a line whose action has a clear, close-up sound (a crack, a gulp, a
+  heartbeat), so the edit can land a sound on it.
+- **Loop ending:** the last line flows back into the first ("…which is why you should never hold your breath.").
+  The payoff restates the answer *and* repeats a key word from the hook.
+- **Pick a `music_mood`** in beats.json: `tension` (body/danger), `curious` (science/how-it-works), `upbeat` (funny
+  stories), `mystery` (unexplained/true crime).
+- Never copy another creator's scripts, shots, titles or name, even when imitating a format.
 
 ## 2b. Narrative style: explain, don't just list facts
 A Short that only *states* facts ("the east side grows faster") leaves the viewer nodding but not understanding.
@@ -76,7 +93,7 @@ using the `answer`? Is every "how" followed by a "why"? If not, rewrite that bea
 - Hook in Tamil must be just as punchy – rewrite idiomatically, don't mirror English syntax.
 - Overlay `trigger.ta` must be a word that actually appears in that beat's Tamil narration; `label` overlays need a Tamil text.
 - Length: Tamil characters per second are lower – `project.py validate` estimates duration from config `chars_per_sec`
-  (auto-calibrated after each render). Trim Tamil until est. 40-55s **before** spending credits.
+  (auto-calibrated after each render). Trim Tamil until est. 35-55s **before** spending credits.
 
 ## 4. beats.json schema
 ```json
@@ -85,6 +102,8 @@ using the `answer`? Is every "how" followed by a "why"? If not, rewrite that bea
   "title": "Crows Can Actually Count",
   "topic": "one-line idea from the user",
   "angle": "animal genius",
+  "music_mood": "curious",
+  "cast": {"hero": {"skin": "#E3A988", "shirt": "#3E7CC9", "hair": "#3A2618"}},
   "style_preset": "realistic-cgi",
   "world": "bright teal-tiled research lab, glossy steel benches, soft overhead strip lights",
   "explainer": {
@@ -115,4 +134,8 @@ using the `answer`? Is every "how" followed by a "why"? If not, rewrite that bea
 ```
 `explainer` is required (see §2b); every `terms[].term` must appear in the English narration.
 Optional per shot: `weight` (relative duration within the beat, default 1), `seed`, `background`.
+Top level: `music_mood` (`tension|curious|upbeat|mystery|none`, a folder in `assets/music/`); optional `music` (`"tension/tension-02.mp3"`) picks one exact track;
+`cast` (faceless shots: one consistent person); `visual_plan.grade` (`teal|warm-sunlit|night|neutral`).
+Per shot, optional `sfx`: `[{"name": "gulp", "trigger": {"en": "swallow", "ta": "முழுங்க"}, "volume": 0.6, "offset_frames": 0}]`
+(a close-up sound from `assets/sfx/foley/<name>.*`, placed on the trigger word).
 `overlay.text` may be a string (numbers/icons) or `{"en": "...", "ta": "..."}` (labels).

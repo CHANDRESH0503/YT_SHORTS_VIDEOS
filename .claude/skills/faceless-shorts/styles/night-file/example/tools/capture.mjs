@@ -5,6 +5,7 @@
 //   node tools/capture.mjs frames review/full "1.2,8.4"  full-size JPEGs of those times
 //   node tools/capture.mjs video renders/out.mp4 [start end] [--draft]   the film (30 fps) with data/mix.wav if it exists
 //   node tools/capture.mjs preview                       serve the project and print a URL to watch it in a browser
+// MB=4 (env) = real motion blur: each video/frames frame averages 4 sub-frames over a 180° shutter (SHUTTER=0.5); n× slower.
 // CHROME=/path/to/chrome overrides the browser.
 import { spawn, spawnSync } from 'node:child_process';
 import http from 'node:http';
@@ -70,7 +71,14 @@ async function openPage(port) {
   return { ev, logs, close };
 }
 const jpg = (d) => Buffer.from(d.slice(d.indexOf(',') + 1), 'base64');
-const FRAME = (t, q, label) => `(() => { const d = OP.frame(${t}, ${q}); ${label ? `const cv = document.getElementById('cv'), c = cv.getContext('2d'); c.setTransform(1,0,0,1,0,0); c.fillStyle = '#000'; c.fillRect(0, 0, 250, 86); c.fillStyle = '#fff'; c.font = '700 60px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText('${(+t).toFixed(2)}', 14, 64); return cv.toDataURL('image/jpeg', ${q});` : 'return d;'} })()`;
+const MBN = Math.max(1, Math.round(+(process.env.MB || 1))), SHUT = +(process.env.SHUTTER || 0.5);
+// motion blur: draw MBN sub-frames spread over the shutter (centred on t), average them on the canvas, encode once
+const FRAME_MB = (t, q) => `(() => { const n = ${MBN}, cv = document.getElementById('cv'), c = cv.getContext('2d'); let acc = null;
+  for (let k = 0; k < n; k++) { OP.draw(Math.max(0, ${t} + (k / (n - 1) - 0.5) * ${SHUT / FPS})); c.setTransform(1, 0, 0, 1, 0, 0);
+    const d = c.getImageData(0, 0, cv.width, cv.height).data; if (!acc) acc = new Float32Array(d.length); for (let i = 0; i < d.length; i++) acc[i] += d[i]; }
+  const img = c.createImageData(cv.width, cv.height); for (let i = 0; i < acc.length; i++) img.data[i] = acc[i] / n;
+  c.putImageData(img, 0, 0); return cv.toDataURL('image/jpeg', ${q}); })()`;
+const FRAME = (t, q, label) => (MBN > 1 && !label) ? FRAME_MB(t, q) : `(() => { const d = OP.frame(${t}, ${q}); ${label ? `const cv = document.getElementById('cv'), c = cv.getContext('2d'); c.setTransform(1,0,0,1,0,0); c.fillStyle = '#000'; c.fillRect(0, 0, 250, 86); c.fillStyle = '#fff'; c.font = '700 60px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillText('${(+t).toFixed(2)}', 14, 64); return cv.toDataURL('image/jpeg', ${q});` : 'return d;'} })()`;
 
 const srv = await serve(mode === 'preview' ? 8765 : 0), port = srv.address().port;
 if (mode === 'preview') { console.log(`open http://127.0.0.1:${port}/  (Ctrl+C to stop)`); }

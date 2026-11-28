@@ -38,7 +38,7 @@ def loudnorm(src, dst, cfg) -> dict:
     m = json.loads(re.findall(r"\{[^{}]+\}", r.stderr, re.S)[-1])
     af = (f"loudnorm=I={I}:TP={TP}:LRA=11:measured_I={m['input_i']}:measured_TP={m['input_tp']}:"
           f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
-    run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c:v", "copy", "-af", af, "-c:a", "aac", "-b:a", "192k",
+    run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-c:v", "copy", "-af", af, "-c:a", "aac", "-b:a", "256k",
          "-ar", "48000", "-movflags", "+faststart", str(dst)])
     return m
 
@@ -65,7 +65,8 @@ def main():
         raw = out_dir / f".{a.slug}_{lang}_raw.mp4"
         t0 = time.time()
         cmd = ["npx", "remotion", "render", "src/index.ts", "ShortVideo", str(raw), f"--props={tlf}",
-               f"--public-dir={pdir}", "--codec=h264", "--crf=18", "--image-format=jpeg", "--jpeg-quality=92",
+               f"--public-dir={pdir}", "--codec=h264", "--crf=17", "--x264-preset=slow", "--color-space=bt709",
+               *(["--image-format=jpeg", "--jpeg-quality=90"] if a.preview else ["--image-format=png"]),
                "--audio-codec=aac", "--audio-bitrate=320k", "--concurrency=4", "--log=error"]
         if a.preview:
             cmd.append("--scale=0.5")

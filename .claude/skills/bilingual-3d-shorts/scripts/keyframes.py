@@ -2,7 +2,7 @@
 """Keyframes via Nano Banana (Gemini app / Google AI Studio), made by the user - free, manual.
 
   python3 keyframes.py <slug>               # write keyframes/NANO_BANANA.md (prompt sheet) + list what's missing
-  python3 keyframes.py <slug> --check       # pick up dropped-in frames, normalise to 1080x1920 PNG, contact sheet
+  python3 keyframes.py <slug> --check       # pick up dropped-in frames, normalise to 1404x2496 PNG (1.3x, sharpened), contact sheet
   python3 keyframes.py <slug> --sheet-only  # rebuild qa/keyframes_sheet.jpg
 
 The user generates each image in Nano Banana and saves it into projects/<slug>/keyframes/ as the filename the sheet
@@ -122,7 +122,7 @@ def adopt_loose_names(kdir: Path, beats: dict) -> list[str]:
     return moved
 
 
-def normalise(f: Path, kdir: Path, W: int, H: int) -> str:
+def normalise(f: Path, kdir: Path, W: int, H: int, sharpen: str = "") -> str:
     size = probe_size(f)
     if not size:
         return "unreadable"
@@ -135,7 +135,7 @@ def normalise(f: Path, kdir: Path, W: int, H: int) -> str:
     orig.mkdir(exist_ok=True)
     keep = orig / f.name
     shutil.copy2(f, keep)
-    vf = f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H}"
+    vf = f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H}" + (f",{sharpen}" if sharpen else "")
     out = kdir / f"{f.stem}.png"
     tmp = kdir / f".{f.stem}.tmp.png"
     run(["ffmpeg", "-v", "error", "-y", "-i", str(keep), "-vf", vf, "-frames:v", "1", str(tmp)])
@@ -153,7 +153,9 @@ def normalise(f: Path, kdir: Path, W: int, H: int) -> str:
 
 def check(pdir: Path, beats: dict, cfg: dict) -> dict:
     kdir = pdir / "keyframes"
-    W, H = cfg["image"]["width"], cfg["image"]["height"]
+    # stored 1.3x larger than the video so 2.5D push-ins stay sharp (config.image.store_*)
+    W, H = cfg["image"].get("store_width", cfg["image"]["width"]), cfg["image"].get("store_height", cfg["image"]["height"])
+    sharpen = cfg["image"].get("sharpen", "")
     moved = adopt_loose_names(kdir, beats)
     report, missing = {}, []
     pending_3d = []
@@ -162,7 +164,7 @@ def check(pdir: Path, beats: dict, cfg: dict) -> dict:
         if not f:
             (pending_3d if s.get("source") in CODE_SOURCES else missing).append(s["id"])
             continue
-        report[s["id"]] = normalise(f, kdir, W, H)
+        report[s["id"]] = normalise(f, kdir, W, H, sharpen)
     for a in beats["assets"]:
         if not find_file(kdir, f"asset_{a['id']}", IMG_EXTS):
             report[f"asset_{a['id']}"] = "missing (optional, but used as the consistency reference)"

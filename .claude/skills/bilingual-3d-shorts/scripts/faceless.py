@@ -5,6 +5,7 @@
   python3 faceless.py <slug> --check    # boot the engine headless and report errors (capture.mjs check)
   python3 faceless.py <slug> --export   # render every faceless shot -> clips/Sxx.mp4 (5s) + keyframes/Sxx.png
   python3 faceless.py <slug> --export --only S04,S07
+  python3 faceless.py <slug> --export --mb 4         # final quality: real motion blur (4 sub-frames per frame, ~4x slower)
 
 Only the faceless-shorts *visual engine* is used (three.js / canvas in headless Chrome). Voice, captions, music, the
 end card and both languages stay in this pipeline (ElevenLabs + Remotion), so the faceless sub-project has no voice and
@@ -51,11 +52,16 @@ def write_timing(fdir: Path, beats: dict, shots: list[tuple[dict, dict]]) -> lis
               "lines": [{"text": s["id"], "caps": " "} for _, s in shots]}
     (fdir / "script.json").write_text(json.dumps(script, indent=1, ensure_ascii=False))
     (fdir / "slots.json").write_text(json.dumps(slots, indent=1, ensure_ascii=False))
+    # one consistent cast per video: beats.cast {"hero": {"skin", "shirt", "pants", "shoes", "hair", "iris"}, ...}
+    # shots.js: import { CAST } from './cast.js'; const hero = new Human(CAST.hero);
+    cast = beats.get("cast") or {}
+    (fdir / "src" / "cast.js").write_text("// written by faceless.py from beats.json -> cast. Use: new Human(CAST.hero)\n"
+                                          f"export const CAST = {json.dumps(cast, indent=1, ensure_ascii=False)};\n")
     return slots
 
 
-def capture(fdir: Path, *args: str) -> subprocess.CompletedProcess:
-    env = {**os.environ, "FPS": FPS}
+def capture(fdir: Path, *args: str, mb: int = 1) -> subprocess.CompletedProcess:
+    env = {**os.environ, "FPS": FPS, "MB": str(mb)}
     if find_chrome():
         env["CHROME"] = find_chrome()
     return subprocess.run(["node", "tools/capture.mjs", *args], cwd=fdir, env=env, capture_output=True, text=True)
@@ -67,6 +73,7 @@ def main():
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--export", action="store_true")
     ap.add_argument("--only", default="", help="comma-separated shot ids to export")
+    ap.add_argument("--mb", type=int, default=1, help="motion-blur sub-frames per frame (4 = final quality, 1 = off/draft)")
     a = ap.parse_args()
     pdir = project_dir(a.slug)
     beats = load_beats(pdir)
@@ -100,12 +107,12 @@ def main():
             if only and sl["id"] not in only:
                 continue
             clip = pdir / "clips" / f"{sl['id']}.mp4"
-            r = capture(fdir, "video", str(clip), str(sl["start"]), str(sl["end"]))
+            r = capture(fdir, "video", str(clip), str(sl["start"]), str(sl["end"]), mb=a.mb)
             if r.returncode or not clip.exists():
                 die(f"{sl['id']}: video capture failed\n{r.stdout[-400:]}{r.stderr[-400:]}", 2)
             tmp = Path(tempfile.mkdtemp())
             mid = sl["start"] + SLOT / 2
-            r = capture(fdir, "frames", str(tmp), f"{mid:.2f}")
+            r = capture(fdir, "frames", str(tmp), f"{mid:.2f}", mb=a.mb)
             jpg = next(tmp.glob("*.jpg"), None)
             if r.returncode or not jpg:
                 die(f"{sl['id']}: keyframe capture failed\n{r.stderr[-400:]}", 2)

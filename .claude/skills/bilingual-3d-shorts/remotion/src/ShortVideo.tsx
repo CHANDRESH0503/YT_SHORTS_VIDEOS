@@ -54,13 +54,18 @@ export const ShortVideo: React.FC<Timeline> = (tl) => {
 				<Audio
 					src={staticFile(tl.music.src)}
 					loop
-					volume={(f) =>
-						tl.music!.volume *
-						interpolate(f, [0, 10, durationInFrames - 30, durationInFrames], [0, 1, 1, 0], {
+					volume={(f) => {
+						const m = tl.music!;
+						const fade = interpolate(f, [0, 10, durationInFrames - 30, durationInFrames], [0, 1, 1, 0], {
 							extrapolateLeft: 'clamp',
 							extrapolateRight: 'clamp',
-						})
-					}
+						});
+						// ducking: gain 1 between lines, `duck` under speech (curve built by timeline.py)
+						const c = m.duckCurve;
+						const g = c && c.length > 1 ? interpolate(f, c.map((p) => p[0]), c.map((p) => p[1]), {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}) : 1;
+						const duck = m.duck ?? 1;
+						return m.volume * fade * (duck + (1 - duck) * g);
+					}}
 				/>
 			) : null}
 			{tl.sfx.map((s, i) => (

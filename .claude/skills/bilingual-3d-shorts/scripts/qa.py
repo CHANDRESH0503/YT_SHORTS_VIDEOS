@@ -74,12 +74,38 @@ def main():
         cap = cfg["captions"]
         checks.append((55 <= cap["y_percent"] <= 75 and cap["max_width_percent"] <= 86,
                        f"caption safe area y={cap['y_percent']}% width={cap['max_width_percent']}%"))
+        # quality checks (Zack D.-level upgrade)
+        beats = json.loads((pdir / "beats.json").read_text())
+        music_off = not cfg["audio"].get("music") or beats.get("music_mood") == "none"
+        checks.append((bool(tl.get("music")) or music_off,
+                       f"background music {'present: ' + tl['music']['src'] if tl.get('music') else ('off by choice' if music_off else 'MISSING - fill assets/music/<music_mood>/ (assets/DOWNLOADS.md)')}"))
+        st = tl["captionStyle"]
+        checks.append((st["highlight"].lower() != st["color"].lower(), f"caption highlight colour {st['highlight']} differs from {st['color']}"))
+        warns = []
+        segs = tl["segments"]
+        first_change = segs[1]["from"] / tl["fps"] if len(segs) > 1 else dur
+        if first_change > 2.5:
+            warns.append(f"first picture change at {first_change:.2f}s (want <= 2.5s: the hook needs a second image fast)")
+        if tl.get("music") and not tl["music"].get("duckCurve"):
+            warns.append("music is not ducked under the voice (re-run timeline.py)")
+        bl = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(f), "-vf", "fps=2,blurdetect,metadata=print:key=lavfi.blur",
+                  "-an", "-f", "null", "-"]).stderr
+        bv = [float(x) for x in re.findall(r"lavfi\.blur=([\d.]+)", bl)]
+        if bv:
+            soft = sum(v > cfg["video"].get("soft_blur", 8.0) for v in bv) / len(bv)
+            report.append(f"- info: sharpness - mean blur {sum(bv) / len(bv):.2f}, {soft:.0%} of sampled frames above {cfg['video'].get('soft_blur', 8.0)}\n")
+            if soft > 0.25:
+                warns.append(f"{soft:.0%} of frames look soft (blurdetect) - check low-res keyframes or long slowed clips")
+        foley = sum(1 for s in tl["sfx"] if "/foley/" in s["src"])
+        report.append(f"- info: grade `{tl.get('gradeName', 'legacy')}`, {foley} foley sounds\n")
         hero_ids = {s["shot"] for s in tl["segments"] if s["clip"]}
         report.append(f"- info: {len(tl['segments'])} segments, {len(hero_ids)} shots with real clips, "
                       f"{len(tl['overlays'])} overlays, {len(tl['captions'])} caption chunks\n")
         for ok, msg in checks:
             report.append(f"- {'PASS' if ok else 'FAIL'}: {msg}\n")
             failed |= not ok
+        for msg in warns:
+            report.append(f"- WARN: {msg}\n")
 
         sheet = pdir / "qa" / f"contact_{lang}.jpg"
         run(["ffmpeg", "-v", "error", "-y", "-i", str(f), "-vf", "fps=1/2.5,scale=270:-1,tile=6x4:padding=4",

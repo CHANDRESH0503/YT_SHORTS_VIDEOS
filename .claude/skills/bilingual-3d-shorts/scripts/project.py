@@ -12,7 +12,7 @@ import datetime as dt
 import json
 import re
 
-from common import (CAMERA_MOVES, CLIP_EXTS, CODE_SOURCES, IMG_EXTS, LANGS, ROLES, SOURCES, die, end_card_sec, find_file, iter_shots,
+from common import (ASSETS_DIR, CAMERA_MOVES, CLIP_EXTS, CODE_SOURCES, IMG_EXTS, LANGS, ROLES, SOURCES, die, end_card_sec, find_file, iter_shots,
                     faceless_styles, load_beats, load_config, narration_text, project_dir, projects_dir, slugify)
 
 SUBDIRS = ["keyframes", "clips", "audio/en", "audio/ta", "sfx", "final", "qa"]
@@ -27,7 +27,7 @@ def cmd_init(a):
         (p / d).mkdir(parents=True, exist_ok=True)
     (p / "brief.md").write_text(
         f"# Brief\n\n- **One-line idea:** {a.idea}\n- **Created:** {dt.date.today().isoformat()}\n"
-        f"- **Outputs:** English + Tamil 9:16 Shorts, 40-55s each\n")
+        f"- **Outputs:** English + Tamil 9:16 Shorts, 35-55s each\n")
     print(json.dumps({"slug": slug, "dir": str(p)}))
 
 
@@ -78,6 +78,56 @@ def check_narrative(beats: dict, errs: list, warns: list) -> None:
         pay = beats["beats"][-1].get("narration", {}).get("en", "")
         if len(words(pay) & words(str(ex.get("answer", "")))) < 2:
             warns.append("payoff does not restate explainer.answer - close the loop with the actual explanation")
+
+
+def check_retention(beats: dict, cfg: dict, errs: list, warns: list) -> None:
+    """Retention format (script-playbook §2c), audio (music_mood, foley) and one colour grade per video."""
+    bl = beats["beats"]
+    hook = bl[0].get("narration", {}).get("en", "")
+    if len(hook.split()) > 10:
+        warns.append(f"hook is {len(hook.split())} words - keep it <= 10 (§2c: land it in 1-2s)")
+    s1 = bl[0]["shots"][0] if bl[0].get("shots") else {}
+    if s1 and (not s1.get("hero") or s1.get("camera_move") == "static_drift"):
+        warns.append(f"{s1.get('id')}: the cold-open shot should be a moving hero shot (hero: true, not static_drift)")
+    for b in bl:
+        if b.get("role") == "mechanism" and not any(s.get("sfx") for s in b.get("shots", [])):
+            warns.append(f"{b['id']}: mechanism beat has no close-up sound moment (add a shot 'sfx': [{{name, trigger}}])")
+    words = lambda x: {w for w in re.findall(r"[a-z']+", x.lower()) if len(w) > 3 and w not in STOP}  # noqa: E731
+    if len(bl) > 1 and not words(hook) & words(bl[-1].get("narration", {}).get("en", "")):
+        warns.append("payoff shares no key word with the hook - make the ending loop back into the opening line")
+    music_dir = ASSETS_DIR / "music"
+    mood = beats.get("music_mood")
+    moods = sorted(d.name for d in music_dir.iterdir() if d.is_dir()) if music_dir.exists() else []
+    if not mood:
+        warns.append(f"music_mood missing - pick one of {moods} (or 'none')")
+    elif mood != "none" and mood not in moods:
+        errs.append(f"music_mood '{mood}' is not a folder in assets/music/ ({moods})")
+    elif mood != "none" and not any(f.suffix.lower() in (".mp3", ".wav", ".m4a", ".aac") for f in (music_dir / mood).iterdir()):
+        warns.append(f"assets/music/{mood}/ is empty - the video will have no music (assets/DOWNLOADS.md)")
+    foley = {f.stem for f in (ASSETS_DIR / "sfx" / "foley").glob("*")} if (ASSETS_DIR / "sfx" / "foley").exists() else set()
+    for b in bl:
+        for s in b.get("shots", []):
+            for fx in s.get("sfx") or []:
+                if not fx.get("name"):
+                    errs.append(f"{s['id']}: sfx entry needs a name")
+                elif fx["name"] not in foley:
+                    warns.append(f"{s['id']}: foley '{fx['name']}' not in assets/sfx/foley/ - it will be skipped")
+                for lang in LANGS:
+                    trig = (fx.get("trigger") or {}).get(lang)
+                    if trig and trig.lower() not in b["narration"][lang].lower():
+                        warns.append(f"{s['id']}: sfx trigger '{trig}' not found in {b['id']} narration.{lang}")
+    vp = beats.get("visual_plan") or {}
+    if any(s.get("source") == "faceless" for b in bl for s in b.get("shots", [])):
+        cast = beats.get("cast") or {}
+        if not cast.get("hero"):
+            warns.append("faceless shots but no cast.hero - add cast {hero: {skin, shirt, pants, hair, iris}} so every shot uses the same person")
+        for who, look in cast.items():
+            bad = set(look) - {"skin", "shirt", "pants", "shoes", "hair", "iris", "face", "scale"}
+            if bad:
+                errs.append(f"cast.{who}: unknown keys {sorted(bad)}")
+    g = vp.get("grade")
+    if g and g not in (cfg.get("grade_presets") or {}):
+        errs.append(f"visual_plan.grade '{g}' not in config.grade_presets ({', '.join(cfg.get('grade_presets') or {})})")
 
 
 def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
@@ -158,6 +208,7 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
             warns.append(f"only {n_face} faceless shot(s) - setting up a faceless-shorts scene set for so few is rarely worth it")
         if n_face and vp.get("faceless_style") not in faceless_styles():
             errs.append(f"visual_plan.faceless_style must be one of {faceless_styles()} when any shot is 'faceless'")
+    check_retention(beats, cfg, errs, warns)
     if not 12 <= n_shots <= 24:
         warns.append(f"{n_shots} shots (aim 14-20 so each lasts 2-4s)")
     if not 3 <= heroes <= 10:

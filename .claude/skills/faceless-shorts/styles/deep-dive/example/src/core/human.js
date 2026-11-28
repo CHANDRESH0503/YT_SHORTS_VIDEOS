@@ -71,9 +71,25 @@ export class Human {
         d = smax(d, -(p[1] - line), 0.02);
         d = smin(d, ellipsoid(p, [0.02, 0.262, 0.05], [0.085, 0.045, 0.075]), 0.04);                      // quiff
         d += 0.006 * noise3(p[0] * 45, p[1] * 25, p[2] * 45);
-        for (const s of [-1, 1]) d = Math.min(d, capsule(p, [s * 0.022, 0.158, 0.119], [s * 0.062, 0.162, 0.108], 0.0065, 0.005)); // brows
-        return d;
+        return d;                                                                                         // brows are separate meshes (below) so they can act
       }, [[-0.15, 0.02, -0.16], [0.15, 0.33, 0.16]], 0.004, () => HA));
+      // expressive brows: a pivot at each brow's centre; pose({ brow }) raises / tilts them
+      const browM = new THREE.MeshStandardMaterial({ color: c.hair, roughness: 0.8 });
+      this.brows = [];
+      for (const s of [-1, 1]) {
+        const b = new THREE.Group(); b.position.set(s * 0.042, 0.161, 0.1155); b.rotation.y = s * 0.28; this.head.add(b);
+        const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.0058, 0.034, 6, 12), browM); m.rotation.z = Math.PI / 2; m.scale.set(1, 1, 0.8); b.add(m);
+        b.userData = { s, y: b.position.y }; this.brows.push(b);
+      }
+      // mouth shapes over the carved lip line: an inner-mouth shell (open / O / grimace), teeth, and a smile arc
+      this.mouth = new THREE.Group(); this.mouth.position.set(0, 0.0395, 0.1135); this.head.add(this.mouth);
+      const inner = new THREE.Mesh(new THREE.SphereGeometry(0.024, 24, 16), new THREE.MeshStandardMaterial({ color: '#3A1214', roughness: 0.6 }));
+      inner.scale.set(1, 0.001, 0.35); this.mouth.add(inner);
+      const teeth = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.009, 0.004), new THREE.MeshPhysicalMaterial({ color: '#F4F1EA', roughness: 0.3, clearcoat: 0.6 }));
+      teeth.position.set(0, 0.0015, 0.004); teeth.visible = false; this.mouth.add(teeth);
+      const smile = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.0036, 8, 24, Math.PI * 0.6), new THREE.MeshStandardMaterial({ color: '#5E2420', roughness: 0.6 }));
+      smile.rotation.z = Math.PI + Math.PI * 0.2; smile.position.set(0, 0.033, -0.001); smile.visible = false; this.mouth.add(smile);
+      this.mouthParts = { inner, teeth, smile };
     }
     // arms
     this.arm = {};
@@ -107,7 +123,8 @@ export class Human {
     }
     this.pose({});
   }
-  /** pose in degrees: spine/chest/head [x, y, z]; shL/shR [x (forward +), y, z (out +)]; elL/elR bend; hipL/hipR [x (forward +), y, z]; knL/knR bend */
+  /** pose in degrees: spine/chest/head [x, y, z]; shL/shR [x (forward +), y, z (out +)]; elL/elR bend; hipL/hipR [x (forward +), y, z]; knL/knR bend;
+   *  lid (-0.4 wide … 1 closed; Human.blink(t)); look [x, y]; brow neutral|raised|worried|angry; mouth closed|open|O|grimace|smile */
   pose(q) {
     const r3 = (g, a = [0, 0, 0]) => g.rotation.set(D(a[0]), D(a[1]), D(a[2]));
     r3(this.spine, q.spine); r3(this.head, q.head);
@@ -117,8 +134,26 @@ export class Human {
     r3(this.leg.R.hip, [-(q.hipR?.[0] ?? 0), q.hipR?.[1] ?? 0, q.hipR?.[2] ?? 2]); this.leg.R.kn.rotation.set(D(q.knR ?? 2), 0, 0);
     if (this.lids) this.lids.forEach((l) => (l.rotation.x = 0.12 + (q.lid ?? 0) * 1.25));   // lid: -0.4 wide open … 0 normal … 1 closed
     if (q.look && this.eyes) this.eyes.forEach((e) => e.rotation.set(D(q.look[1] || 0), D(q.look[0] || 0), 0));
+    // brow: 'neutral' | 'raised' | 'worried' | 'angry' | { up (m, ±0.01), tilt (deg, inner end up +) }
+    if (this.brows) {
+      const B = { neutral: [0, 0], raised: [0.008, 4], worried: [0.004, 18], angry: [-0.004, -20] };
+      const [up, tilt] = typeof q.brow === 'object' && q.brow ? [q.brow.up ?? 0, q.brow.tilt ?? 0] : B[q.brow || 'neutral'] || B.neutral;
+      this.brows.forEach((b) => { b.position.y = b.userData.y + up; b.rotation.z = -b.userData.s * D(tilt); });
+    }
+    // mouth: 'closed' | 'open' | 'O' | 'grimace' | 'smile' | { open: 0..1, wide: 0..1.5 }
+    if (this.mouthParts) {
+      const { inner, teeth, smile } = this.mouthParts;
+      const M = { closed: [0, 1], open: [1, 1.15], O: [1, 0.62], grimace: [0.42, 1.4], smile: [0, 1] };
+      const mq = q.mouth || 'closed';
+      const [op, wide] = typeof mq === 'object' ? [mq.open ?? 0, mq.wide ?? 1] : M[mq] || M.closed;
+      inner.visible = op > 0.02; inner.scale.set(wide, Math.max(0.001, op * 0.78), 0.35);
+      teeth.visible = mq === 'grimace'; teeth.scale.x = wide * 0.9;
+      smile.visible = mq === 'smile';
+    }
     this.group.updateMatrixWorld(true);
   }
+  /** natural blink: returns a `lid` value for pose() at film time t (a ~0.15 s blink every ~3 s, offset by seed) */
+  static blink(t, seed = 0, base = 0) { const ph = (t + seed * 1.37) % 3.1; return ph < 0.15 ? Math.max(base, Math.sin((ph / 0.15) * Math.PI)) : base; }
   /** walking pose at phase ph (radians) */
   walk(ph, amt = 1) { const s = Math.sin(ph) * amt; this.pose({ hipL: [s * 26, 0, 2], hipR: [-s * 26, 0, 2], knL: Math.max(0, -Math.sin(ph + 0.6)) * 40 * amt + 4, knR: Math.max(0, Math.sin(ph + 0.6)) * 40 * amt + 4, shL: [-s * 20, 0, 6], shR: [s * 20, 0, 6], elL: 18, elR: 18, spine: [3, s * 4, 0] }); this.hips.position.y = 0.93 - Math.abs(Math.cos(ph)) * 0.012 * amt; }
   /** swap the body (not the head) to another material, e.g. x-ray glass; null restores */
