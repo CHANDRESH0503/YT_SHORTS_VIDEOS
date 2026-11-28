@@ -23,7 +23,7 @@ export type Segment = {
 
 export type CaptionWord = {text: string; from: number; to: number};
 export type Caption = {from: number; to: number; text: string; words: CaptionWord[]};
-export type Overlay = {from: number; dur: number; text: string; kind: 'number' | 'icon' | 'label'; color: string; seg?: null | 'digits' | 'labels' | 'scan'};
+export type Overlay = {from: number; dur: number; text: string; kind: 'number' | 'icon' | 'label' | 'hook'; color: string; seg?: null | 'digits' | 'labels' | 'scan'};
 export type Sfx = {from: number; src: string; volume: number};
 export type EndCard = {from: number; dur: number; logo: string; channel: string; cta: string; subline: string};
 

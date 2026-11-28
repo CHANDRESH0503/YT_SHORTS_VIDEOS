@@ -81,11 +81,26 @@ def main():
                        f"background music {'present: ' + tl['music']['src'] if tl.get('music') else ('off by choice' if music_off else 'MISSING - fill assets/music/<music_mood>/ (assets/DOWNLOADS.md)')}"))
         st = tl["captionStyle"]
         checks.append((st["highlight"].lower() != st["color"].lower(), f"caption highlight colour {st['highlight']} differs from {st['color']}"))
+        # the first 2-4 seconds (script-playbook §2c) and narration flow (§2d)
+        hc, fc = cfg.get("hook") or {}, cfg.get("flow") or {}
+        vo = json.loads((pdir / "audio" / lang / "words.json").read_text())
+        b1 = vo["beats"][0] if vo.get("beats") else None
+        hook_end = V["preroll_sec"] + (b1["end"] if b1 else 99)
+        checks.append((hook_end <= hc.get("qa_max_sec", 4.0), f"spoken hook ends at {hook_end:.2f}s (must be <= {hc.get('qa_max_sec', 4.0)}s)"))
+        ht = next((o for o in tl["overlays"] if o.get("kind") == "hook"), None)
+        checks.append((bool(ht) and ht["from"] == 0, f"hook title on screen from frame 0: {repr(ht['text']) if ht else 'MISSING - add beats.json hook_text and re-run timeline.py'}"))
         warns = []
         segs = tl["segments"]
+        gap_max = fc.get("max_gap_sec", 0.9)
+        stalls = [f"{words[i]['text']}→{words[i + 1]['text']} {words[i + 1]['start'] - words[i]['end']:.2f}s"
+                  for i in range(len(words) - 1) if words[i + 1]["start"] - words[i]["end"] > gap_max]
+        if stalls:
+            warns.append(f"narration stalls (pauses > {gap_max}s): {stalls} - join those sentences in beats.json")
+        if hook_end > hc.get("max_sec", 3.0):
+            warns.append(f"hook ends at {hook_end:.2f}s (aim <= {hc.get('max_sec', 3.0)}s)")
         first_change = segs[1]["from"] / tl["fps"] if len(segs) > 1 else dur
-        if first_change > 2.5:
-            warns.append(f"first picture change at {first_change:.2f}s (want <= 2.5s: the hook needs a second image fast)")
+        if first_change > 2.0:
+            warns.append(f"first picture change at {first_change:.2f}s (want <= 2.0s: the hook needs a second image fast)")
         if tl.get("music") and not tl["music"].get("duckCurve"):
             warns.append("music is not ducked under the voice (re-run timeline.py)")
         bl = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(f), "-vf", "fps=2,blurdetect,metadata=print:key=lavfi.blur",

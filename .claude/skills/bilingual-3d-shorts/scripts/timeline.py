@@ -20,7 +20,7 @@ from common import (ASSETS_DIR, CLIP_EXTS, IMG_EXTS, LANGS, ROOT, die, end_card_
 ALT_MOVE = {"push_in": "pull_out", "pull_out": "push_in", "pan_left": "pan_right", "pan_right": "pan_left",
             "tilt_up": "tilt_down", "tilt_down": "tilt_up", "orbit_left": "orbit_right", "orbit_right": "orbit_left",
             "static_drift": "push_in"}
-OVERLAY_COLORS = {"number": "#E8F1F5", "icon": "#FFFFFF", "label": "#7DF9FF"}
+OVERLAY_COLORS = {"number": "#E8F1F5", "icon": "#FFFFFF", "label": "#7DF9FF", "hook": "#FFD43B"}
 END_PUNCT = tuple(".?!,;:…।")
 AUDIO_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".ogg")
 
@@ -39,12 +39,13 @@ def pick_grade(beats: dict, cfg: dict) -> tuple[str, dict]:
     return name, {"grain": 0.05, **presets[name]}
 
 
-def duck_curve(words: list, pre: float, fps: int, total: int, ramp: int = 5) -> list[list[float]]:
-    """Music gain keyframes [frame, gain]: 1 between lines, ducked (0) under speech, ~150 ms ramps."""
+def duck_curve(words: list, pre: float, fps: int, total: int, ramp: int = 9, hold: float = 1.2) -> list[list[float]]:
+    """Music gain keyframes [frame, gain]: ducked (0) under speech and through normal sentence pauses (<= hold s),
+    back up only in real gaps, ~300 ms ramps. Swelling in every sentence gap made the narration sound stop-start."""
     spans = []
     for w in words:
         s, e = int(round((pre + w["start"]) * fps)), int(round((pre + w["end"]) * fps))
-        if spans and s - spans[-1][1] <= int(0.35 * fps):
+        if spans and s - spans[-1][1] <= int(hold * fps):
             spans[-1][1] = max(spans[-1][1], e)
         else:
             spans.append([s, e])
@@ -184,6 +185,19 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
             overlays.append({"from": max(0, at), "dur": min(d, total - at), "text": text, "kind": ov["kind"],
                              "color": ov.get("color", OVERLAY_COLORS[ov["kind"]]), "seg": ov.get("seg")})
 
+    # ---- hook title: 3-6 words on screen from frame 0 (sound-off viewers), held until the spoken hook lands ----
+    hc = cfg.get("hook") or {}
+    ht = (beats.get("hook_text") or {}).get(lang)
+    if ht:
+        b1 = btimes.get(beats["beats"][0]["id"])
+        end = F(pre + b1["end"] + 0.3) if b1 else F(hc.get("text_min_sec", 2.0))
+        end = max(F(hc.get("text_min_sec", 2.0)), min(end, F(hc.get("text_max_sec", 3.5))))
+        for o in overlays:  # other callouts wait until the title clears (they share the upper zone)
+            if o["from"] < end:
+                o["dur"] = max(12, o["dur"] - (end - o["from"]))
+                o["from"] = end
+        overlays.insert(0, {"from": 0, "dur": end, "text": ht, "kind": "hook", "color": OVERLAY_COLORS["hook"], "seg": None})
+
     # ---- sfx + music (copied into project so they are inside the Remotion public dir) ----
     sfx_dir = pdir / "sfx"
     sfx_dir.mkdir(exist_ok=True)
@@ -216,10 +230,18 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
                 sfx.append({"from": max(0, at), "src": f"sfx/foley/{src.name}", "volume": float(fx.get("volume", vol.get("foley", 0.6)))})
     if foley_missing:
         print(f"WARN {lang}: foley sounds not found in assets/sfx/foley/: {', '.join(sorted(set(foley_missing)))} (see assets/DOWNLOADS.md)")
+    speech = [(F(pre + w["start"]), F(pre + w["end"])) for w in words]
+    under = (cfg.get("flow") or {}).get("whoosh_under_voice", 1.0)
+
+    def on_speech(f0: int, f1: int) -> bool:
+        return any(a < f1 and f0 < b for a, b in speech)
+
     for i, sg in enumerate(segs):
         if sg["transition"] in ("whip_left", "whip_right", "zoom"):
             name = "whoosh" if sg["transition"] != "zoom" else "whoosh2"
-            sfx.append({"from": max(0, sg["from"] - 5), "src": f"sfx/{name}.wav", "volume": vol["whoosh"]})
+            at = max(0, sg["from"] - 5)
+            v = vol["whoosh"] * (under if on_speech(at, at + 12) else 1.0)  # a loud whoosh mid-word breaks the sentence
+            sfx.append({"from": at, "src": f"sfx/{name}.wav", "volume": round(v, 3)})
         if sg["transition"] == "flash":
             sfx.append({"from": max(0, sg["from"] - 42), "src": "sfx/riser.wav", "volume": vol["riser"]})
             sfx.append({"from": sg["from"], "src": "sfx/impact.wav", "volume": vol["impact"]})
@@ -242,7 +264,9 @@ def build(slug: str, lang: str, cfg: dict) -> dict:
             dst = sfx_dir / f"music{cands[0].suffix.lower()}"
             shutil.copy2(cands[0], dst)  # always refresh, so a changed mood/track takes effect
             music = {"src": f"sfx/{dst.name}", "volume": cfg["audio"]["music_volume"],
-                     "duck": cfg["audio"].get("music_duck", 1.0), "duckCurve": duck_curve(words, pre, fps, total)}
+                     "duck": cfg["audio"].get("music_duck", 1.0),
+                     "duckCurve": duck_curve(words, pre, fps, total, (cfg.get("flow") or {}).get("duck_ramp_frames", 9),
+                                             (cfg.get("flow") or {}).get("duck_hold_sec", 1.2))}
 
     # ---- end card: channel logo + subscribe ask, appended after the last shot ----
     end_card = None

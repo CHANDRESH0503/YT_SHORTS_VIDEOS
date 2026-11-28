@@ -4,7 +4,7 @@ Measured from the two reference Shorts (ffprobe + frame sampling every 3s):
 
 | Property | Reference | Our target |
 |---|---|---|
-| Format | 9:16, 30 fps, 27-35s | 1080x1920, 30 fps, **35-55s** (aim ~45s) |
+| Format | 9:16, 30 fps, 27-35s | 1080x1920, 30 fps, **35-90s, hard cap 90s** (shortest that explains it; most 45-70s) |
 | Look | Realistic game-engine 3D (UE-style): forensic lab, crow, scientists, macro bullet casing | `realistic-cgi` preset |
 | Palette | Teal / cyan clinical, glossy whites, metallic accents | One grade preset per video (`visual_plan.grade`): `teal` (tint #00B4C8, the reference look), `warm-sunlit` (deep-dive / tall-tale), `night` (mysteries), `neutral` (2D styles) |
 | Shot length | 2-3s, camera **always** moving | 2-3s (auto-split above 3s) |

@@ -10,43 +10,44 @@
   },
   "duration": {
     "min": 35,
-    "max": 55,
-    "target": 45
+    "max": 90,
+    "target": 60,
+    "note": "hard cap 90 s including the end card; use the shortest length that fully explains the idea (most topics land 45-70 s)"
   },
   "words": {
     "en": {
       "min": 100,
-      "max": 140
+      "max": 230
     }
   },
   "voice": {
     "provider": "elevenlabs",
     "model_id": "eleven_multilingual_v2",
     "output_format": "mp3_44100_128",
-    "max_atempo": 1.1,
+    "max_atempo": 1.06,
     "en": {
       "voice_id": "JBFqnCBsd6RMkjVDRZzb",
       "voice_name": "George (premade)",
       "settings": {
-        "stability": 0.4,
+        "stability": 0.5,
         "similarity_boost": 0.8,
-        "style": 0.3,
+        "style": 0.15,
         "use_speaker_boost": true,
-        "speed": 1.08
+        "speed": 1.04
       },
-      "chars_per_sec": 15.86
+      "chars_per_sec": 15.16
     },
     "ta": {
       "voice_id": "JBFqnCBsd6RMkjVDRZzb",
       "voice_name": "George (premade)",
       "settings": {
-        "stability": 0.45,
+        "stability": 0.52,
         "similarity_boost": 0.8,
-        "style": 0.25,
+        "style": 0.12,
         "use_speaker_boost": true,
-        "speed": 1.05
+        "speed": 1.02
       },
-      "chars_per_sec": 15.3
+      "chars_per_sec": 14.87
     }
   },
   "image": {
@@ -182,5 +183,36 @@
     "stick-story": "neutral",
     "paper-atlas": "neutral",
     "_default": "teal"
+  },
+  "hook": {
+    "max_words": 9,
+    "max_sec": 3.0,
+    "qa_max_sec": 4.0,
+    "text_max_words": 6,
+    "text_min_sec": 2.0,
+    "text_max_sec": 3.5,
+    "rehook_every_sec": 15,
+    "banned_openers": [
+      "did you know",
+      "in this video",
+      "hey guys",
+      "hi guys",
+      "welcome",
+      "today we",
+      "today i",
+      "let's talk",
+      "let me tell",
+      "have you ever wondered",
+      "so,",
+      "so basically",
+      "in today's"
+    ]
+  },
+  "flow": {
+    "max_gap_sec": 0.7,
+    "duck_hold_sec": 1.2,
+    "duck_ramp_frames": 9,
+    "whoosh_under_voice": 0.45,
+    "min_sentence_words": 4
   }
 }

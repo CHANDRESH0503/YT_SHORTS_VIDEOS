@@ -9,6 +9,10 @@
 After rendering, prints measured duration and updates config chars_per_sec (calibration, running average).
 If a render lands slightly over the max duration (<= max_atempo), it is sped up with ffmpeg atempo and all
 timestamps are rescaled -- no extra credits spent.
+
+Each language is ONE request for the whole narration (never per beat or per sentence): one take keeps the voice's pitch,
+energy and pacing continuous across beats. After rendering it reports the flow: pauses longer than flow.max_gap_sec
+and when the hook line ends (hook.max_sec / hook.qa_max_sec), so a choppy or slow-opening take is caught before render.
 """
 from __future__ import annotations
 
@@ -105,6 +109,23 @@ def words_from_alignment(text: str, al: dict, spans) -> tuple[list[dict], list[d
     return words, beats_t
 
 
+def flow_report(words: list[dict], beat_times: list[dict], cfg: dict) -> dict:
+    """Pauses that break the narration, and when the hook finishes (video time, incl. preroll)."""
+    gap_max = (cfg.get("flow") or {}).get("max_gap_sec", 0.9)
+    hc = cfg.get("hook") or {}
+    pauses = [{"after": words[i]["text"], "before": words[i + 1]["text"], "at": round(words[i]["end"], 2),
+               "gap": round(words[i + 1]["start"] - words[i]["end"], 2)}
+              for i in range(len(words) - 1) if words[i + 1]["start"] - words[i]["end"] > gap_max]
+    hook_end = round(cfg["video"]["preroll_sec"] + (beat_times[0]["end"] if beat_times else 0), 2)
+    warns = [f"{p['gap']}s pause between '{p['after']}' and '{p['before']}' at {p['at']}s - the narration stalls here; "
+             f"join the sentences (comma / 'and' / 'so') and re-render" for p in pauses]
+    if hook_end > hc.get("qa_max_sec", 4.0):
+        warns.append(f"hook line ends at {hook_end}s - it must land by {hc.get('qa_max_sec', 4.0)}s; cut hook words and re-render")
+    elif hook_end > hc.get("max_sec", 3.0):
+        warns.append(f"hook line ends at {hook_end}s (aim <= {hc.get('max_sec', 3.0)}s)")
+    return {"hook_end_sec": hook_end, "long_pauses": pauses, "warnings": warns}
+
+
 def render_lang(slug: str, lang: str, cfg: dict, force: bool) -> dict:
     pdir = project_dir(slug)
     out_dir = pdir / "audio" / lang
@@ -138,7 +159,8 @@ def render_lang(slug: str, lang: str, cfg: dict, force: bool) -> dict:
     else:
         (out_dir / "vo.mp3").write_bytes(audio)
 
-    meta = {"lang": lang, "duration": round(dur, 3), "atempo": round(factor, 4), "chars": len(text),
+    flow = flow_report(words, beat_times, cfg)
+    meta = {"lang": lang, "duration": round(dur, 3), "hook_end_sec": flow["hook_end_sec"], "long_pauses": flow["long_pauses"], "atempo": round(factor, 4), "chars": len(text),
             "voice_id": vc["voice_id"], "model_id": cfg["voice"]["model_id"], "beats": beat_times, "words": words}
     (out_dir / "words.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
 
@@ -148,7 +170,10 @@ def render_lang(slug: str, lang: str, cfg: dict, force: bool) -> dict:
     save_config(cfg)
     total = dur + cfg["video"]["preroll_sec"] + cfg["video"]["tail_sec"] + end_card_sec(cfg)
     ok = cfg["duration"]["min"] <= total <= cfg["duration"]["max"]
+    for w in flow["warnings"]:
+        print(f"WARN {lang}: {w}")
     print(json.dumps({"lang": lang, "vo_sec": round(dur, 2), "video_sec": round(total, 2), "in_range": ok,
+                      "hook_end_sec": flow["hook_end_sec"], "long_pauses": len(flow["long_pauses"]),
                       "atempo": round(factor, 3), "chars_spent": len(text), "new_chars_per_sec": vc["chars_per_sec"]}))
     return meta
 

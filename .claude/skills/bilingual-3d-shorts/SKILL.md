@@ -1,11 +1,11 @@
 ---
 name: bilingual-3d-shorts
-description: Turn a one-line idea into two production-ready 35-55s vertical 3D explainer YouTube Shorts, one in English and one in Tamil, each with its own voiceover and burned-in word-synced captions (plus SRTs). It researches the topic, writes a curiosity-loop script, transcreates it into spoken Tamil, generates 3D keyframes, writes a free image-to-video prompt pack, and renders and QA-checks both videos. Use when the user gives a short idea, question or topic and wants a Short, Reel or 3D explainer video made from it, says "make a short about …", or asks to continue an existing short project.
+description: Turn a one-line idea into two production-ready 35-90s vertical 3D explainer YouTube Shorts, one in English and one in Tamil, each with its own voiceover and burned-in word-synced captions (plus SRTs). It researches the topic, writes a curiosity-loop script, transcreates it into spoken Tamil, generates 3D keyframes, writes a free image-to-video prompt pack, and renders and QA-checks both videos. Use when the user gives a short idea, question or topic and wants a Short, Reel or 3D explainer video made from it, says "make a short about …", or asks to continue an existing short project.
 ---
 
 # Bilingual 3D Explainer Shorts (EN + TA)
 
-One line in, two finished 9:16 Shorts out: `final/<slug>_en.mp4` and `final/<slug>_ta.mp4`, plus SRTs, thumbnails and metadata.
+One line in, two finished 9:16 Shorts (35-90 s, **hard cap 90 s**) out: `final/<slug>_en.mp4` and `final/<slug>_ta.mp4`, plus SRTs, thumbnails and metadata.
 The look follows `YT_VIDEOS/References/`: realistic game-engine 3D, teal/cyan grade, an always-moving camera, 2-3s shots,
 whip/zoom transitions, glowing number/icon overlays, and 2-3 word white captions.
 **Budget is $0.** Shots come from three visual sources: code-built 3D (Claude), the **faceless-shorts** engines (Claude, in code)
@@ -50,10 +50,19 @@ Write `beats.json` following script-playbook §2, §2b and §4 and style-guide (
 - **Narrative style (§2b, required):** fill the `explainer` spine first, then write each mechanism beat as What → Why → So.
   Define every technical term in the sentence it first appears, say the analogy at the hardest step, bridge each beat to the last,
   and make the payoff restate the answer. The test: from the narration alone, a viewer could explain it to a friend.
-- **Retention format (script-playbook §2c, required):** cold open on the most extreme image, hook ≤ 10 words in second person,
-  escalate every beat, one close-up sound moment per mechanism beat, a loop ending that echoes the hook, and a `music_mood`.
-- 6-9 beats, hook first and payoff last, with at least one twist. Use 2-3 shots per beat, 14-20 shots in total, and 5-8 `hero` shots.
-- English narration should be 100-140 words. Write the Tamil narration per beat as a **transcreation** (§3), not a translation.
+- **The first 2-4 seconds (script-playbook §2c, required):** the three-layer hook. Frame 0 is the most extreme image, already
+  moving; the spoken hook is ≤ 9 words and finished by 3 s (both languages); `hook_text` {en, ta} is a 3-6 word on-screen title
+  shown from frame 0 that adds the stakes or the question; the hook beat has 2 shots so the first cut lands by ~1.5 s. Write 3
+  `hook_options` with different formulas and pick the strongest. No warm-up openers ("Did you know", "In this video", …).
+- **Retention format (§2c):** second person, escalate every beat, a re-hook (twist, question, "But here's the catch") every
+  ~10-15 s, one close-up sound moment per mechanism beat, a loop ending that echoes the hook, and a `music_mood`.
+- **Narration flow (§2d, required):** write the whole narration as one paragraph and read it aloud before splitting it into
+  beats. Every beat opens with a bridge from the last one, no fragments, no new character without an introduction, no ALL-CAPS,
+  sentences of 8-18 words that run into each other. The voice is one take, so the text decides whether it flows.
+- **Length (§2): 35-90 s, hard cap 90 s** including the end card. Use the shortest length that explains the idea fully (most land
+  45-70 s); never pad. Scale beats and shots with length (§2 table: ~45 s → 6-9 beats, 14-20 shots; ~90 s → 10-13 beats,
+  26-33 shots), always a new picture every 2-3 s, hook first, payoff last, at least one twist, ~1 in 3 shots `hero`.
+- English narration 100-230 words (≈ 2.6 words/s). Write the Tamil narration per beat as a **transcreation** (§3), not a translation.
 - Each shot needs a concrete `scene`, `asset_refs`, a `camera_move` (never the same one twice in a row) and `lighting_camera`.
   Hero shots also need a `motion_prompt`. Add 4-7 `overlay`s with triggers that appear in both languages.
 **Visual source decision (required):** before validating, score every shot against `references/visual-source-decision.md` and pick
@@ -71,14 +80,15 @@ Keep code3d + faceless within the ~90 min build budget. If code3d or faceless sh
 - `cast` when any shot is faceless: `{"hero": {"skin", "shirt", "pants", "shoes", "hair", "iris"}}`, the same person in every shot.
 - `music_mood`, and on one shot per mechanism beat `"sfx": [{"name": "crack", "trigger": {"en": "…", "ta": "…"}}]`.
   The name is a file in `assets/sfx/foley/` (assets/DOWNLOADS.md); the sound lands on the trigger word.
-Then run `python3 project.py validate <slug>`. Fix every error and re-run until `ok: true`. Resolve warnings unless there is a reason not to.
+Then run `python3 project.py validate <slug>`. Fix every error and re-run until `ok: true`. Resolve warnings unless there is a reason not to;
+the hook (§2c) and flow (§2d) warnings always get fixed, since they are what makes viewers scroll away or hear a choppy voice.
 
 ### GATE 1: script approval (stop and wait)
 Show the user:
-- the improved hook
+- the improved hook, the 3 `hook_options` it beat, and the `hook_text` on-screen title, with the estimated second the spoken hook ends
 - the **explanation spine** (question, one-sentence answer, chain, analogy, defined terms; it heads `script_en.txt`)
-- both scripts beat by beat (from `script_en.txt` and `script_ta.txt`)
-- the estimated seconds per language
+- both scripts beat by beat (from `script_en.txt` and `script_ta.txt`), after passing the §2d read-aloud test
+- the estimated seconds per language (≤ 90) and where the re-hooks land
 - how many characters the voices will use, against the ElevenLabs credits left (`python3 voice.py credits`)
 - 2-3 key sources
 - the `music_mood`, and which track it will use (or that the folder is empty)
@@ -136,6 +146,9 @@ Clips can be added later and only Stages 6-7 need re-running.
   beats.json, re-validate, and re-render only that language with `--lang ta --force`. Tell the user that this spends credits.
 - If it is too short (<40s), add one concrete fact line to a mechanism beat and re-render that language.
 - Listen-proxy check: read `audio/<lang>/words.json`. Every beat has words, and timings are monotonic.
+- **Flow and hook check:** voice.py prints `hook_end_sec` and a WARN for every pause over `flow.max_gap_sec` (0.7 s). A hook
+  that ends after 4 s, or a stall in the middle of an idea, means the text needs fixing: join or cut the words in beats.json and
+  re-render that language (it spends credits, so tell the user). Never render per beat or per sentence: one take per language.
 
 ## Stage 6: Timeline and render
 1. `python3 timeline.py <slug>`. The longest shot must be ≤3s and every hero clip present must show up in `clip_segments`.
@@ -153,7 +166,9 @@ Clips can be added later and only Stages 6-7 need re-running.
 2. View `qa/contact_en.jpg`, `qa/contact_ta.jpg` and `qa/reference_sheet.jpg`, and go through the visual checklist in qa-checklist.md.
    Especially check that the Tamil glyphs are intact.
    Also run the explanation check: listen to each language once and confirm the "why" in every mechanism beat is audible, not lost to fast pacing.
-   Then the **muted 3-second test** (qa-checklist): frames 0-3s alone must make you curious. If not, fix shot 1 before delivering.
+   Then the **muted 3-second test** (qa-checklist): frames 0-3s alone (picture + hook title) must make you curious. If not, fix
+   shot 1 or `hook_text` before delivering. qa.py FAILs if the spoken hook ends after 4 s or the hook title is missing at frame 0.
+   Also listen once end to end for **flow**: the voice never stalls, every beat follows from the one before.
 3. Run Stage 8 below before Gate 4. It replaces the old hand-written `metadata_<lang>.md`.
 4. **GATE 4.** Show the final paths (videos, SRTs, `thumbnail_<lang>.jpg` (9:16) and `thumbnail_<lang>_16x9.jpg` (16:9), `publish_<lang>.md`), the chosen titles, QA results, a one-line summary of anything you could not verify, and the remaining ElevenLabs credits.
    Also ask: "Anything you'd want done differently next time?" (optional, feeds Stage 9).

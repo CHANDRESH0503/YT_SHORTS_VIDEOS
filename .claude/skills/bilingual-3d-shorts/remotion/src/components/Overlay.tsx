@@ -56,6 +56,29 @@ export const OverlayCallout: React.FC<{ov: OverlayT; style: Timeline['overlaySty
 				{ov.text}
 			</div>
 		);
+	} else if (ov.kind === 'hook') {
+		// Hook title (frame 0 until the spoken hook lands): big, high-contrast, readable with the sound off.
+		content = (
+			<div
+				style={{
+					fontFamily,
+					fontWeight: 900,
+					fontSize: style.size * 0.4,
+					lineHeight: 1.12,
+					maxWidth: '86%',
+					textAlign: 'center',
+					color: '#ffffff',
+					padding: '20px 40px',
+					borderRadius: 28,
+					background: 'rgba(0, 0, 0, 0.55)',
+					border: `5px solid ${ov.color}`,
+					boxShadow: `0 0 30px ${ov.color}88, 0 12px 30px rgba(0,0,0,0.6)`,
+					textShadow: '0 4px 12px rgba(0,0,0,0.8)',
+				}}
+			>
+				{ov.text}
+			</div>
+		);
 	} else {
 		content = (
 			<div

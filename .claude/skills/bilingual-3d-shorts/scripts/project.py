@@ -27,7 +27,7 @@ def cmd_init(a):
         (p / d).mkdir(parents=True, exist_ok=True)
     (p / "brief.md").write_text(
         f"# Brief\n\n- **One-line idea:** {a.idea}\n- **Created:** {dt.date.today().isoformat()}\n"
-        f"- **Outputs:** English + Tamil 9:16 Shorts, 35-55s each\n")
+        f"- **Outputs:** English + Tamil 9:16 Shorts, 35-90s each (90 s hard cap)\n")
     print(json.dumps({"slug": slug, "dir": str(p)}))
 
 
@@ -47,8 +47,8 @@ def check_narrative(beats: dict, errs: list, warns: list) -> None:
         if not str(ex.get(k, "")).strip():
             errs.append(f"explainer.{k} empty")
     chain = ex.get("chain") or []
-    if not 3 <= len(chain) <= 6:
-        errs.append(f"explainer.chain has {len(chain)} steps (need 3-5 cause -> effect steps)")
+    if not 3 <= len(chain) <= 7:
+        errs.append(f"explainer.chain has {len(chain)} steps (need 3-5 cause -> effect steps, up to 7 for a 70-90 s Short)")
     if not isinstance(ex.get("terms"), list):
         errs.append("explainer.terms must be a list (empty only if the narration uses no technical words)")
     if len(str(ex.get("answer", "")).split()) > 25:
@@ -80,12 +80,106 @@ def check_narrative(beats: dict, errs: list, warns: list) -> None:
             warns.append("payoff does not restate explainer.answer - close the loop with the actual explanation")
 
 
+# Narration flow (script-playbook §2d): one continuous spoken story, not a stack of separate cards.
+BRIDGE = {"en": r"^(but|so|and|and so|that's|that|this|these|those|here's|now|then|which|because|except|yet|instead|still|"
+                r"when|while|after|before|within|once|until|it|its|it's|they|their|there|the result|turns out|in fact|even|"
+                r"meanwhile|plus|only|worse|better|the catch|the trick|the answer|the reason|why|how|what|seconds later|"
+                r"minutes later|over|by)\b",
+          "ta": r"^(ஆனா|அதனால|அதான்|அப்போ|இப்போ|அப்புறம்|அதுக்கு|அது|இது|இந்த|அந்த|ஏன்னா|ஏன்|எப்படி|என்ன|அப்படின்னா|"
+                r"இதனால|அதாவது|அதுமட்டுமில்ல|இன்னும்|கொஞ்ச|சில|உடனே|அடுத்து|ஒரு)"}
+ACRONYM_OK = {"DNA", "RNA", "NASA", "WIFI", "LED", "GPS", "CPU", "USB", "UFO", "MRI", "CT", "UV", "TV", "AI", "ISRO", "LCD", "OK"}
+
+
+def _sentences(text: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[.!?।])\s+", text.strip()) if x]
+
+
+def check_hook(beats: dict, cfg: dict, errs: list, warns: list) -> None:
+    """The first 2-4 seconds (script-playbook §2c): a short spoken hook, a matching on-screen hook title, a fast first cut."""
+    hc = cfg.get("hook") or {}
+    b1 = beats["beats"][0]
+    for lang in LANGS:
+        line = b1.get("narration", {}).get(lang, "")
+        n = len(line.split())
+        sec = len(line) / cfg["voice"][lang]["chars_per_sec"]
+        if lang == "en" and n > hc.get("max_words", 9) + 3:
+            errs.append(f"hook is {n} words - it must be <= {hc.get('max_words', 9)} so it lands inside the first 3 s")
+        elif lang == "en" and n > hc.get("max_words", 9):
+            warns.append(f"hook is {n} words - aim <= {hc.get('max_words', 9)}")
+        if sec > hc.get("max_sec", 3.0) + 0.6:
+            errs.append(f"{lang}: hook takes ~{sec:.1f}s to say - it must finish by ~{hc.get('max_sec', 3.0)}s (cut words, §2c)")
+        elif sec > hc.get("max_sec", 3.0):
+            warns.append(f"{lang}: hook takes ~{sec:.1f}s to say - aim <= {hc.get('max_sec', 3.0)}s")
+    low = b1.get("narration", {}).get("en", "").lower().lstrip()
+    for bad in hc.get("banned_openers", []):
+        if low.startswith(bad):
+            errs.append(f"hook opens with '{bad}' - a warm-up phrase viewers scroll past; open on the claim or the question (§2c)")
+    ht = beats.get("hook_text")
+    if not isinstance(ht, dict) or not all(str(ht.get(l, "")).strip() for l in LANGS):
+        errs.append("hook_text {en, ta} missing - the 3-6 word on-screen title shown from frame 0 for sound-off viewers (§2c)")
+    else:
+        for lang in LANGS:
+            if len(ht[lang].split()) > hc.get("text_max_words", 6):
+                warns.append(f"hook_text.{lang} is {len(ht[lang].split())} words - keep it <= {hc.get('text_max_words', 6)}, readable in one glance")
+        if ht["en"].strip().lower().rstrip("!?.") == low.rstrip("!?."):
+            warns.append("hook_text repeats the spoken hook word for word - make it add the stakes or the question (captions already show the words)")
+    opts = beats.get("hook_options") or []
+    if len(opts) < 3:
+        warns.append("hook_options: write 3 candidate hooks (different formulas, §2c) and pick the strongest for B1")
+    shots = b1.get("shots", [])
+    if len(shots) < 2:
+        warns.append(f"{b1['id']}: the hook beat has 1 shot - give it 2 so the first cut lands by ~1.5 s (pattern interrupt)")
+    for s in shots:
+        if s.get("overlay"):
+            warns.append(f"{s['id']}: overlay in the hook beat collides with hook_text - timeline.py delays it until the title clears")
+
+
+def check_flow(beats: dict, cfg: dict, errs: list, warns: list) -> None:
+    """Narration must read as one continuous story when spoken end to end (script-playbook §2d)."""
+    fc = cfg.get("flow") or {}
+    bl = beats["beats"]
+    min_w = fc.get("min_sentence_words", 4)
+    for lang in LANGS:
+        for i, b in enumerate(bl):
+            nar = " ".join(b.get("narration", {}).get(lang, "").split())
+            if not nar:
+                continue
+            if i > 0 and not re.search(BRIDGE[lang], nar, re.I):
+                prev = bl[i - 1].get("narration", {}).get(lang, "").rstrip()
+                if not prev.endswith(("?", ":", "…", "—")):
+                    warns.append(f"{b['id']}.{lang}: opens with no bridge from {bl[i - 1]['id']} ('{nar[:30]}...') - start with "
+                                 f"But/So/That's why/Here's.../Now..., or end the last beat on a question (§2d)")
+            sents = _sentences(nar)
+            if lang == "en" and i > 0:
+                frags = [x for x in sents if len(x.split()) < min_w and not x.endswith("?")]
+                if frags:
+                    warns.append(f"{b['id']}.en: fragment(s) {frags} - fold them into the sentence before with a comma or 'and' (§2d)")
+                if len(sents) >= 3 and len(nar.split()) / len(sents) < 7:
+                    warns.append(f"{b['id']}.en: {len(sents)} short sentences in one beat - it will sound stop-start; join them (§2d)")
+            caps = [w for w in re.findall(r"\b[A-Z]{3,}\b", nar) if w not in ACRONYM_OK]
+            if caps:
+                warns.append(f"{b['id']}.{lang}: ALL-CAPS {caps} - the voice may spell it out or jump in volume; write it in lower case (§2d)")
+            if re.search(r"\(|\)|\[|/|&|\.\.\.(?!$)", nar):
+                warns.append(f"{b['id']}.{lang}: brackets, slashes, '&' or mid-line '...' read badly aloud - rewrite as spoken words (§2d)")
+    # re-hooks: Shorts over ~45 s need a fresh question or turn at least every rehook_every_sec seconds
+    every = (cfg.get("hook") or {}).get("rehook_every_sec", 15)
+    cps = cfg["voice"]["en"]["chars_per_sec"]
+    t, last = cfg["video"]["preroll_sec"], 0.0
+    for b in bl:
+        nar = b.get("narration", {}).get("en", "")
+        if b.get("role") in ("hook", "twist", "escalation", "payoff") or "?" in nar or re.search(r"\b(but|here's the|the catch|until)\b", nar, re.I):
+            if t - last > every + 3:
+                warns.append(f"no re-hook between ~{last:.0f}s and ~{t:.0f}s - add a twist, a question or a 'But here's the catch' "
+                             f"line roughly every {every}s (§2c)")
+            last = t
+        t += len(nar) / cps
+
+
 def check_retention(beats: dict, cfg: dict, errs: list, warns: list) -> None:
     """Retention format (script-playbook §2c), audio (music_mood, foley) and one colour grade per video."""
     bl = beats["beats"]
     hook = bl[0].get("narration", {}).get("en", "")
-    if len(hook.split()) > 10:
-        warns.append(f"hook is {len(hook.split())} words - keep it <= 10 (§2c: land it in 1-2s)")
+    check_hook(beats, cfg, errs, warns)
     s1 = bl[0]["shots"][0] if bl[0].get("shots") else {}
     if s1 and (not s1.get("hero") or s1.get("camera_move") == "static_drift"):
         warns.append(f"{s1.get('id')}: the cold-open shot should be a moving hero shot (hero: true, not static_drift)")
@@ -144,8 +238,8 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
         if not x.get("description"):
             errs.append(f"asset {x.get('id')} has no description")
     n_beats = len(beats["beats"])
-    if not 5 <= n_beats <= 10:
-        warns.append(f"{n_beats} beats (aim 6-9)")
+    if not 5 <= n_beats <= 14:
+        warns.append(f"{n_beats} beats (aim 6-9 for ~45 s, up to 12-14 for 80-90 s)")
     roles = [b.get("role") for b in beats["beats"]]
     if roles[0] != "hook":
         errs.append("first beat must have role 'hook'")
@@ -154,6 +248,7 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
     if "twist" not in roles:
         warns.append("no 'twist' beat - curiosity loop will feel flat")
     check_narrative(beats, errs, warns)
+    check_flow(beats, cfg, errs, warns)
     seen, n_shots, heroes, n_code, n_face = set(), 0, 0, 0, 0
     for b in beats["beats"]:
         if b.get("role") not in ROLES:
@@ -209,10 +304,6 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
         if n_face and vp.get("faceless_style") not in faceless_styles():
             errs.append(f"visual_plan.faceless_style must be one of {faceless_styles()} when any shot is 'faceless'")
     check_retention(beats, cfg, errs, warns)
-    if not 12 <= n_shots <= 24:
-        warns.append(f"{n_shots} shots (aim 14-20 so each lasts 2-4s)")
-    if not 3 <= heroes <= 10:
-        warns.append(f"{heroes} hero shots (aim 5-8)")
 
     stats = {"beats": n_beats, "shots": n_shots, "hero_shots": heroes, "code3d_shots": n_code, "faceless_shots": n_face, "nano_shots": n_shots - n_code - n_face}
     for lang in LANGS:
@@ -223,6 +314,12 @@ def validate(beats: dict, cfg: dict) -> tuple[list[str], list[str], dict]:
         lo, hi = cfg["duration"]["min"], cfg["duration"]["max"]
         if not lo <= est <= hi:
             errs.append(f"{lang}: estimated {est:.1f}s outside {lo}-{hi}s - tighten/expand script")
+    vo = stats["en"]["est_sec"] - end_card_sec(cfg)
+    lo_s, hi_s = max(12, round(vo / 3.0)), round(vo / 2.0) + 2
+    if not lo_s <= n_shots <= hi_s:
+        warns.append(f"{n_shots} shots for ~{vo:.0f}s of narration (aim {lo_s}-{hi_s}, a new picture every 2-3s)")
+    if not 3 <= heroes <= max(10, n_shots // 2.5):
+        warns.append(f"{heroes} hero shots (aim 5-8, ~1 in 3 for longer Shorts)")
     ew = stats["en"]["words"]
     wmin, wmax = cfg["words"]["en"]["min"], cfg["words"]["en"]["max"]
     if not wmin <= ew <= wmax:
